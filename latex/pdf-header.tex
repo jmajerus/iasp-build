@@ -27,6 +27,14 @@
 \@ifundefined{Shaded}{%
   \newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
 }{}
+ \@ifundefined{abstract}{%
+   \newenvironment{abstract}{%
+     \begin{quote}
+     \begingroup\centering\bfseries Abstract\par\endgroup\smallskip
+   }{%
+     \end{quote}
+   }
+ }{}
 \makeatother
 
 % Reconfigure Pandoc's Highlighting environment so literal includes wrap lines

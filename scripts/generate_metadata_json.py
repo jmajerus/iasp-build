@@ -15,7 +15,8 @@ DEST = ROOT / "metadata.json"
 
 METADATA: dict[str, object] = {
     "author": ["John Majerus"],
-    "title": "The Struggle Against Dehumanization in the Age of AI",
+    "title": "The Struggle Against Dehumanization",
+    "subtitle": "Technology, Judgment, and Human Dignity in the Age of AI",
     "language": "en-US",
     "rights": "© 2025 John Majerus. All rights reserved.",
     "publisher": "Independent",
@@ -24,11 +25,26 @@ METADATA: dict[str, object] = {
         "dehumanization in the age of automation, drawing on real-world "
         "cases, philosophical frameworks, and actionable solutions."
     ),
+    "comment": "Prepublication proof. Not for distribution.",
+    "keywords": [
+        "AI Ethics",
+        "Dehumanization",
+        "Technology and Society",
+        "Human Dignity",
+        "Automation",
+        "Philosophy",
+    ],
+    "linernotes": True,
+    "revision": True,
+    "abstract": (
+        "This work explores the ethical and societal implications of AI-driven "
+        "dehumanization, examining how technology can erode human dignity and "
+        "proposing strategies to uphold humanity in an increasingly automated world."
+    ),
     "cover-image": "cover.png",
     "documentclass": "book",
     "classoption": ["oneside"],
-    "version": "0.2-preproof",
-    "subtitle": "Pre-publication proof for review",
+    "version": "0.3.20",
 }
 
 

@@ -1181,6 +1181,24 @@ local function expand_include_div(div)
     end
   end
 
+  local listing_mode = nil
+  local raw_listing = attrs.list
+    or attrs.listing
+    or attrs["list-mode"]
+    or attrs["data-list"]
+    or attrs["data-listing"]
+    or attrs["data-list-mode"]
+  if raw_listing and raw_listing ~= "" then
+    local lowered = raw_listing:lower()
+    if lowered == "name" or lowered == "names" or lowered == "filename" or lowered == "filenames" then
+      listing_mode = "filenames"
+    elseif lowered == "basename" or lowered == "basenames" then
+      listing_mode = "basenames"
+    elseif lowered == "path" or lowered == "paths" or lowered == "full" then
+      listing_mode = "paths"
+    end
+  end
+
   local literal_mode = attr_mode == "literal"
     or attr_mode == "code"
     or has_class(div, "code")
@@ -1203,6 +1221,35 @@ local function expand_include_div(div)
     include_targets = files
   else
     include_targets = { resolved }
+  end
+
+  if listing_mode and #include_targets > 0 then
+    local list_items = {}
+    for _, include_path in ipairs(include_targets) do
+      local label
+      if listing_mode == "filenames" or listing_mode == "basenames" then
+        label = basename_without_ext(include_path) or include_path
+      else
+        label = include_path
+      end
+
+      table.insert(list_items, { pandoc.Plain({ pandoc.Str(label) }) })
+    end
+
+    local ordered = false
+    local list_style = attrs["list-style"] or attrs["data-list-style"] or attrs["list-type"]
+    if list_style and list_style ~= "" then
+      local lowered = list_style:lower()
+      if lowered == "ordered" or lowered == "numbered" then
+        ordered = true
+      end
+    end
+
+    if ordered then
+      return { pandoc.OrderedList(list_items) }
+    end
+
+    return { pandoc.BulletList(list_items) }
   end
 
   local assembled = {}

@@ -49,10 +49,11 @@
 % Minor insight (note.insight): small glyph, visibly indented
 \newcommand{\noteheaderornament}[1]{%
   \par\nointerlineskip
+  \vspace{0.12em}
   \begingroup
     % Tighten the row height so the ornament hugs the top padding
     \setlength{\baselineskip}{0.95\baselineskip}%
-    \noindent\hspace{1.05em}\smash{\raisebox{0.25ex}{\small #1}}%
+    \noindent\hspace{1.05em}\smash{\small #1}%
   \par\nointerlineskip
   \endgroup
 }
@@ -62,10 +63,11 @@
 % Major insight (note.insight.major): badge strip aligned to left text edge
 \newcommand{\noteheaderbadgenormal}[1]{%
   \par\nointerlineskip
+  \vspace{-0.25em}% counteract the restored top padding so the badge hugs the frame
   \noindent
   \colorbox{noteboxline!15}{%
-    \rule{0pt}{.80\baselineskip}%
-    \hspace{0.35em}\raisebox{0.1ex}{\large #1}\hspace{0.35em}%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
   }%
   \par\nointerlineskip
 }
@@ -74,6 +76,7 @@
 % 3b. Badge strip header with warning note color.
 \newcommand{\noteheaderbadgewarning}[1]{%
   \par\nointerlineskip
+  \vspace{-0.25em}
   \noindent
   \colorbox{noteboxwarningline!15}{%
     \strut\hspace{0.25em}\raisebox{0.05em}{#1}\hspace{0.25em}%
