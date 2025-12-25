@@ -1,0 +1,376 @@
+% pdf-header.tex
+% Extra styling for Pandoc-generated PDFs
+% (included via --include-in-header)
+
+\makeatletter
+\@ifundefined{savenotes}{}{%%
+  \let\savenotes\relax%%
+  \let\endsavenotes\relax%%
+}
+\makeatother
+
+\usepackage{needspace}
+\usepackage{fontspec}
+\usepackage{newunicodechar}
+\usepackage{fancyvrb}
+\usepackage{fvextra} % allow breaklines for Pandoc's Verbatim blocks
+\usepackage{framed}
+\fvset{breaklines=true,breakanywhere=true}
+
+% Provide fallback Highlighting/Shaded environments if Pandoc's template omits them
+\makeatletter
+\@ifundefined{VerbBar}{\newcommand{\VerbBar}{|}}{}
+\@ifundefined{VERB}{\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}}{}
+\@ifundefined{Highlighting}{%
+  \DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+}{}
+\@ifundefined{Shaded}{%
+  \newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+}{}
+\makeatother
+
+% Reconfigure Pandoc's Highlighting environment so literal includes wrap lines
+\RecustomVerbatimEnvironment{Highlighting}{Verbatim}{%
+  commandchars=\\\{\},% keep Pandoc's command chars intact
+  breaklines=true,% wrap long lines instead of overflowing the margin
+  breakanywhere=true
+}
+\defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase,Renderer=Harfbuzz}
+
+% --------------------------------------------------
+% PDF mode switching: 'print' vs 'screen'
+% --------------------------------------------------
+\usepackage{ifthen}
+\usepackage{etoolbox}
+
+% --------------------------------------------------
+% Font configuration (XeLaTeX)
+% --------------------------------------------------
+\setmainfont{TeX Gyre Pagella}
+
+\newcommand{\setnoteglyphfont}{%
+  \IfFontExistsTF{Noto Color Emoji}{%
+    \newfontfamily\noteglyphfont{Noto Color Emoji}[Renderer=Harfbuzz,Scale=MatchLowercase]%
+  }{%
+    \IfFontExistsTF{Noto Emoji}{%
+      \newfontfamily\noteglyphfont{Noto Emoji}[Renderer=Harfbuzz,Scale=MatchLowercase]%
+    }{%
+      \IfFontExistsTF{Symbola}{%
+        \newfontfamily\noteglyphfont{Symbola}[Scale=MatchLowercase]%
+      }{%
+        \newfontfamily\noteglyphfont{DejaVu Sans}[Scale=MatchLowercase]%
+      }%
+    }%
+  }%
+}
+\setnoteglyphfont
+
+\newcommand{\emojiFallback}[1]{{\noteglyphfont\symbol{#1}}}
+\newunicodechar{📺}{\emojiFallback{"1F4FA}}
+\newunicodechar{🌐}{\emojiFallback{"1F310}}
+\newunicodechar{📘}{\emojiFallback{"1F4D8}}
+\newunicodechar{⭐}{\emojiFallback{"2B50}}
+
+\newcommand{\sectionheadingglyph}[1]{%%
+  \llap{{\noteglyphfont #1}\hspace{0.6em}}%%
+}
+
+% Pandoc will set \pdfmode via --variable=pdfmode:MODE or metadata.
+% We interpret that into booleans for use below. If \pdfmode is
+% undefined or not 'print', we default to 'screen'.
+
+\newboolean{isprint}
+\newboolean{isscreen}
+
+% default to screen
+\setboolean{isprint}{false}
+\setboolean{isscreen}{true}
+
+% If the user specified pdfmode=print, flip the flags.
+\ifdefined\pdfmode
+  \ifthenelse{\equal{\pdfmode}{print}}{%%
+    \setboolean{isprint}{true}%%
+    \setboolean{isscreen}{false}%%
+  }{}
+\fi
+
+
+% --------------------------------------------------
+% Page layout
+% --------------------------------------------------
+\ifthenelse{\boolean{isprint}}{%%
+  % Print-optimized: asymmetric margins for binding + mirrored layout
+  \usepackage[
+    inner=1.05in,
+    outer=0.85in,
+    top=0.95in,
+    bottom=0.95in,
+    bindingoffset=0.18in,
+    twoside=true
+  ]{geometry}%%
+}{%%
+  % Screen-optimized: a bit more generous margins, single-sided
+  \usepackage[margin=1.1in, twoside=false]{geometry}%%
+}
+\usepackage{microtype} % nicer text spacing
+
+% --------------------------------------------------
+% Page style (headers/footers)
+% --------------------------------------------------
+\usepackage{fancyhdr}
+\newcommand{\defaultpagestylename}{fancy}
+
+% For print, use a classic running-head layout.
+% For screen, keep things subdued: footer page number only,
+% and no horizontal head rule.
+\ifthenelse{\boolean{isprint}}{%%
+  \pagestyle{fancy}
+  \fancyhf{}% clear
+  % Page number at bottom center
+  \fancyfoot[C]{\thepage}
+  % Running heads: small italic for visual separation
+  % LE = Left side on Even pages, RO = Right side on Odd pages
+  \fancyhead[LE,RO]{\small\itshape\nouppercase{\leftmark}}
+  % Keep default \headrulewidth (visible horizontal line)
+}{%%
+  % Screen: very minimal, no running heads, no top rule
+  \pagestyle{fancy}
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+
+% Make sure \chaptermark exists even for 'article' class
+\providecommand{\chaptermark}[1]{}
+
+% Use chapter titles for \leftmark (no section marks in header)
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{}
+
+% Make sure header area is tall enough
+\setlength{\headheight}{14pt}
+\setlength{\headsep}{12pt}
+
+\newcommand{\includeBannerText}{}
+\newif\ifincludeBannerActive
+\includeBannerActivefalse
+
+\newcommand{\includeBannerStripe}{%%
+  \begingroup
+  \setlength{\fboxsep}{6pt}%%
+  \colorbox{includebannerbg}{%%
+    \parbox{\dimexpr\textwidth-2\fboxsep\relax}{\centering\footnotesize\sffamily\textbf{\includeBannerText}}%%
+  }%%
+  \endgroup
+}
+
+\fancypagestyle{include-banner}{%%
+  \fancyhf{}
+  \fancyhead[C]{\includeBannerStripe}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+\newcommand{\activateIncludeBanner}[1]{%%
+  \def\includeBannerText{#1}%%
+  \includeBannerActivetrue%%
+  \pagestyle{include-banner}%%
+}
+
+\newcommand{\deactivateIncludeBanner}{%%
+  \includeBannerActivefalse%%
+  \pagestyle{\defaultpagestylename}%%
+  \def\includeBannerText{}%%
+}
+
+\newenvironment{includepagebanner}[1]{%%
+  \clearpage%% ensure bannered inserts always start on a fresh page
+  \activateIncludeBanner{#1}%%
+    \thispagestyle{include-banner}%%
+}{%%
+  \deactivateIncludeBanner%%
+}
+
+\newenvironment{includepagebannerchapter}[1]{%%
+  \activateIncludeBanner{#1}%%
+}{%%
+  \deactivateIncludeBanner%%
+}
+
+\makeatletter
+\apptocmd{\@chapter}{\ifincludeBannerActive\thispagestyle{include-banner}\fi}{}{}
+\apptocmd{\@schapter}{\ifincludeBannerActive\thispagestyle{include-banner}\fi}{}{}
+\makeatother
+
+
+
+% --------------------------------------------------
+% Part title pages: vertically offset, left-aligned, no header/footer
+% --------------------------------------------------
+\usepackage{ragged2e} % make sure this is present near the top
+
+\newenvironment{parttitlepage}{%
+  \clearpage
+  \thispagestyle{empty}% no running head / footer
+  \markboth{}{}% clear left/right marks
+  \vspace*{0.32\textheight}% push content down a bit
+  \begingroup
+  \RaggedRight% left-aligned, no justification
+}{%
+  \par
+  \endgroup
+  \clearpage
+}
+
+
+
+% --------------------------------------------------
+% Section / part / chapter formatting
+% --------------------------------------------------
+\usepackage{titlesec}
+
+% PARTS (your outer "Series"/major divisions)
+% Shown on their own page, big and centered
+\titleformat{\part}
+  [display]
+  {\centering\Huge\bfseries}
+  {\partname~\thepart}
+  {1ex}
+  {}
+
+\titlespacing*{\part}
+  {0pt}   % left
+  {*6}    % before
+  {*4}    % after
+
+% CHAPTERS (your main units inside parts)
+% Adjusted for a clean, book-like start
+\titleformat{\chapter}
+  [display]
+  {\normalfont\LARGE\bfseries}
+  {\chaptername~\thechapter}
+  {1ex}
+  {}
+
+\titlespacing*{\chapter}
+  {0pt}   % left
+  {*4}    % before
+  {*2}    % after
+
+% SECTIONS (for your h2 / h3 hierarchy)
+\titleformat{\section}
+  {\normalfont\Large\bfseries}
+  {\thesection}
+  {0.5em}
+  {}
+
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}
+  {\thesubsection}
+  {0.5em}
+  {}
+
+% --------------------------------------------------
+% Appendices
+% --------------------------------------------------
+\usepackage[toc,page]{appendix}
+
+% When Pandoc/Lua filter switches to appendix mode
+% (\appendix), chapters become "Appendix A", "Appendix B", etc.
+% You can tweak the label if you like:
+% \renewcommand{\appendixname}{Appendix}
+% \renewcommand{\appendixtocname}{Appendices}
+
+% --------------------------------------------------
+% Optional: Sidebar environment for PDF
+% (we can wire your epub:type="aside" to this later)
+% --------------------------------------------------
+\usepackage{mdframed}
+\usepackage{xcolor}
+
+
+% Sidebar background differs by mode; make it clearly visible.
+\ifthenelse{\boolean{isscreen}}{%%
+  % Screen PDF: slightly darker gray for clear on-screen contrast
+  \colorlet{sidebarbg}{gray!20}%%
+  \colorlet{calloutbg}{gray!12}%%
+  \colorlet{includebannerbg}{gray!25}%%
+}{%%
+  % Print PDF: a bit lighter, but still clearly distinct
+  \colorlet{sidebarbg}{gray!12}%%
+  \colorlet{calloutbg}{gray!6}%%
+  \colorlet{includebannerbg}{gray!18}%%
+}
+
+% Per-environment framing (kept in dedicated inputs for easy tweaking)
+\definecolor{noteboxbg}{HTML}{FFF6D5}
+\definecolor{noteboxline}{HTML}{D9A300}
+\definecolor{noteboxwarningbg}{HTML}{FFF1E6}
+\definecolor{noteboxwarningline}{HTML}{C05621}
+\definecolor{exampleboxbg}{HTML}{E8F1FF}
+\definecolor{exampleboxline}{HTML}{2F80ED}
+\definecolor{definitionboxbg}{HTML}{E6F7EF}
+\definecolor{definitionboxline}{HTML}{1B7F4D}
+
+\input{iasp_tooling/latex/box-sidebar.tex}
+\input{iasp_tooling/latex/box-sidebar-inline.tex}
+\input{iasp_tooling/latex/box-callout.tex}
+\input{iasp_tooling/latex/box-note.tex}
+\input{iasp_tooling/latex/box-example.tex}
+\input{iasp_tooling/latex/box-definition.tex}
+\input{iasp_tooling/latex/bridgehead.tex}
+
+% --------------------------------------------------
+% Hyperref styling (screen vs print)
+% --------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+
+\ifthenelse{\boolean{isscreen}}{%%
+  % Screen PDF: colored links for easier navigation
+  \hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+  }
+}{%%
+  % Print PDF: avoid colored/boxed links
+  \hypersetup{
+    colorlinks=false,
+    pdfborder={0 0 0}
+  }
+}
+
+% --------------------------------------------------
+% Epigraphs
+% --------------------------------------------------
+\usepackage{ragged2e}
+
+\newenvironment{epigraph}{
+  \begin{flushright}
+  \begin{minipage}{0.65\textwidth}
+  \itshape
+}{
+  \end{minipage}
+  \end{flushright}
+  \vspace{2em}
+}
+
+% Slightly tighter epigraph variant for inline, chapter-opening use
+\newenvironment{epigraphtight}{
+  \begin{flushright}
+  \begin{minipage}{0.6\textwidth}
+  \itshape
+}{
+  \end{minipage}
+  \end{flushright}
+  \vspace{1em}
+}
+
+
+
+% Usage (once your Lua filter or Pandoc mappings emit it):
+% \begin{sidebar}
+%   Sidebar text...
+% \end{sidebar}

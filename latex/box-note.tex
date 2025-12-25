@@ -1,0 +1,174 @@
+% Notes (epub:type="note")
+
+% This file defines the LaTeX rendering for semantic notes:
+%   note
+%   note.idea
+%   note.insight       (minor insight)
+%   note.insight.major (major insight)
+%   note.warning
+%
+% It is built around a small presentation framework:
+%   \noteheaderinline{glyph}        – inline glyph before first sentence
+%   \noteheaderornament{glyph}      – standalone ornamental row (e.g., ⁂)
+%   \noteheaderbadgenormal{glyph}   – badge strip with neutral note color
+%   \noteheaderbadgewarning{glyph}  – badge strip with warning color
+%
+% The Lua filter inserts:
+%   \notevariantideainline
+%   \notevariantinsight
+%   \notevariantinsightmajor
+%   \notevariant{<variant>}
+%
+% which are mapped here onto the presentation primitives.
+
+%--------------------------------------------------------------------
+% Glyphs
+%--------------------------------------------------------------------
+% Glyph font assumed defined somewhere, e.g.:
+%   \newfontfamily\noteglyphfont{Noto Emoji}
+% or similar.
+
+\newcommand{\glyphnote}{{\noteglyphfont ∴}}      % neutral/default note
+\newcommand{\glyphidea}{{\noteglyphfont 💡}}     % note.idea
+\newcommand{\glyphinsight}{{\noteglyphfont ⁂}}  % note.insight
+\newcommand{\glyphwarning}{{\noteglyphfont ※}}  % note.warning (calmer than ⚠)
+
+
+%--------------------------------------------------------------------
+% Presentation primitives (namespaced as \noteheader...)
+%--------------------------------------------------------------------
+
+% 1. Inline header: small glyph before the first sentence.
+\newcommand{\noteheaderinline}[1]{%
+  \raisebox{0.05em}{#1}\hspace{0.4em}\ignorespaces
+}
+
+% 2. Ornamental header: a standalone glyph row.
+%    Using your "lightly indented asterism" style.
+% Minor insight (note.insight): small ornament row
+% Minor insight (note.insight): small glyph, visibly indented
+\newcommand{\noteheaderornament}[1]{%
+  \par\nointerlineskip
+  \begingroup
+    % Tighten the row height so the ornament hugs the top padding
+    \setlength{\baselineskip}{0.95\baselineskip}%
+    \noindent\hspace{1.05em}\smash{\raisebox{0.25ex}{\small #1}}%
+  \par\nointerlineskip
+  \endgroup
+}
+
+
+% 3a. Badge strip header with neutral note color.
+% Major insight (note.insight.major): badge strip aligned to left text edge
+\newcommand{\noteheaderbadgenormal}[1]{%
+  \par\nointerlineskip
+  \noindent
+  \colorbox{noteboxline!15}{%
+    \rule{0pt}{.80\baselineskip}%
+    \hspace{0.35em}\raisebox{0.1ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+}
+
+
+% 3b. Badge strip header with warning note color.
+\newcommand{\noteheaderbadgewarning}[1]{%
+  \par\nointerlineskip
+  \noindent
+  \colorbox{noteboxwarningline!15}{%
+    \strut\hspace{0.25em}\raisebox{0.05em}{#1}\hspace{0.25em}%
+  }%
+  \par\nointerlineskip
+}
+
+
+%--------------------------------------------------------------------
+% Semantic header macros (map semantic types → presentation)
+%--------------------------------------------------------------------
+
+% note.idea  → inline lightbulb
+\newcommand{\headernoteidea}{%
+  \noteheaderinline{\glyphidea}%
+}
+
+% note.insight (minor) → ornamental asterism row
+\newcommand{\headernoteinsight}{%
+  \noteheaderornament{\glyphinsight}%
+}
+
+% note.insight.major (major) → badge strip with asterism
+\newcommand{\headernoteinsightmajor}{%
+  \noteheaderbadgenormal{\glyphinsight}%
+}
+
+% note.warning → badge strip with warning glyph and warning color
+\newcommand{\headernotewarning}{%
+  \noteheaderbadgewarning{\glyphwarning}%
+}
+
+% Optional: neutral note badge (for plain notes if needed)
+\newcommand{\headernotenote}{%
+  \noteheaderbadgenormal{\glyphnote}%
+}
+
+
+%--------------------------------------------------------------------
+% Backwards-compatible macros expected by iasp-semantics.lua
+%--------------------------------------------------------------------
+
+% Inline lightbulb for note.idea
+\newcommand{\notevariantideainline}{%
+  \headernoteidea
+}
+
+% Minor insight header (note.insight)
+\newcommand{\notevariantinsight}{%
+  \headernoteinsight
+}
+
+% Major insight header (note.insight.major)
+\newcommand{\notevariantinsightmajor}{%
+  \headernoteinsightmajor
+}
+
+% Generic badge for notes where Lua inserts \notevariant{<variant>}:
+% - "warning" → warning badge
+% - anything else → neutral note badge
+\newcommand{\notevariant}[1]{%
+  \ifstrequal{#1}{warning}{%
+    \headernotewarning
+  }{%
+    \headernotenote
+  }%
+}
+
+
+%--------------------------------------------------------------------
+% Note box environments
+%--------------------------------------------------------------------
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{notebox}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxwarningline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxwarningbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxwarning}
