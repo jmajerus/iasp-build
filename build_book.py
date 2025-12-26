@@ -38,6 +38,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .lib.order_sources import load_book_order
+from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
+
 # Detect repo + tooling roots relative to this module
 TOOLING_ROOT = Path(__file__).resolve().parent
 ROOT = TOOLING_ROOT.parent
@@ -66,9 +69,12 @@ PDF_HEADER = LATEX_DIR / "pdf-header.tex"
 BLOCKQUOTE_STYLE = LATEX_DIR / "box-blockquote.tex"
 SENTINEL_HEADER = LATEX_DIR / "sentinel-logging.tex"
 TOC_GENERATOR = ROOT / "generate_toc.py"
+ORDER_SNAPSHOT_GENERATOR = ROOT / "generate_order_snapshot.py"
 COVER_IMAGE = ROOT / "cover.jpg"
 QUOTE_FIXTURE = ROOT / "tests" / "quote-playground.md"
 CHAPTER_OUTPUT_DIR = BUILD_DIR / "chapters"
+CONTAINER_WRAPPERS_JSON = BUILD_DIR / "container-wrappers.json"
+PRE_BUILD_HOOKS_DIR = ROOT / "scripts" / "pre_build_hooks"
 
 EPUB_OUT = BUILD_DIR / "The-Struggle-Against-Dehumanization.epub"
 PDF_OUT_SCREEN = BUILD_DIR / "The-Struggle-Against-Dehumanization.pdf"
@@ -234,6 +240,21 @@ def run(cmd: list[str]) -> None:
         sys.exit(result.returncode)
 
 
+def run_pre_build_hooks() -> None:
+    """Execute optional Python scripts before each build to refresh assets."""
+
+    if not PRE_BUILD_HOOKS_DIR.exists():
+        return
+
+    hooks = sorted(path for path in PRE_BUILD_HOOKS_DIR.glob("*.py") if path.is_file())
+    if not hooks:
+        return
+
+    print("\n== Running pre-build hooks ==")
+    for hook in hooks:
+        run([sys.executable, str(hook)])
+
+
 def ensure_build_dir() -> None:
     """Create the build/ directory if the user removed it."""
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
@@ -266,6 +287,21 @@ def run_generate_toc() -> None:
 
     print("\n== Regenerating front-matter Table of Contents (generate_toc.py) ==")
     run([sys.executable, str(TOC_GENERATOR)])
+
+
+def run_generate_order_snapshot() -> None:
+    """Emit a Markdown snapshot of the active book order for quick review."""
+
+    if not ORDER_SNAPSHOT_GENERATOR.exists():
+        print("-- generate_order_snapshot.py not found; skipping order snapshot.")
+        return
+
+    cmd = [sys.executable, str(ORDER_SNAPSHOT_GENERATOR), "--order", str(BOOK_ORDER)]
+    if PROFILE and PROFILE.name:
+        cmd += ["--profile", PROFILE.name]
+
+    print("\n== Writing canonical book-order snapshot (generate_order_snapshot.py) ==")
+    run(cmd)
 
 
 def ensure_metadata_json() -> None:
@@ -511,7 +547,7 @@ def update_build_metadata(build_stage: str | None = None) -> None:
 def append_metadata_files(cmd: list[str]) -> None:
     """Attach any available metadata files to a Pandoc command."""
 
-    sources: list[Path | None] = [BUILD_METADATA_JSON]
+    sources: list[Path | None] = [BUILD_METADATA_JSON, CONTAINER_WRAPPERS_JSON]
     sources.extend(PROFILE_METADATA_FILES)
 
     seen: set[Path] = set()
@@ -774,19 +810,15 @@ def read_book_order() -> list[str]:
     - Ignores blank lines
     - Ignores lines starting with '#'
     """
-    if not BOOK_ORDER.exists():
+    try:
+        order_data = load_book_order(BOOK_ORDER)
+    except FileNotFoundError:
         print(f"!! book-order.txt not found at {BOOK_ORDER}")
         sys.exit(1)
 
-    inputs: list[str] = []
-    with BOOK_ORDER.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            path = (ROOT / line).resolve()
-            inputs.append(str(path))
-
+    order_nodes = walk_order_entries(order_data, ROOT)
+    inputs = flatten_nodes(order_nodes)
+    write_wrapper_metadata(order_nodes, CONTAINER_WRAPPERS_JSON)
     if not inputs:
         print("!! No input files found in book-order.txt")
         sys.exit(1)
@@ -798,6 +830,7 @@ def build_epub(use_filter: bool = True) -> None:
     ensure_build_dir()
     run_tag_by_dir()
     run_generate_toc()
+    run_generate_order_snapshot()
     ensure_metadata_json()
     inputs = read_book_order()
     verify_citations(inputs)
@@ -839,6 +872,7 @@ def build_office_format(
     ensure_build_dir()
     run_tag_by_dir()
     run_generate_toc()
+    run_generate_order_snapshot()
     ensure_metadata_json()
     inputs = read_book_order()
     verify_citations(inputs)
@@ -878,6 +912,7 @@ def make_pdf_base_cmd(
     """
     run_tag_by_dir()
     run_generate_toc()
+    run_generate_order_snapshot()
     ensure_metadata_json()
     inputs = read_book_order()
     verify_citations(inputs)
@@ -1103,6 +1138,7 @@ def build_single_markdown(
         ensure_build_dir()
         run_tag_by_dir()
         run_generate_toc()
+        run_generate_order_snapshot()
         ensure_metadata_json()
     else:
         ensure_build_dir()
@@ -1153,6 +1189,7 @@ def build_all_chapters(use_filter: bool = True, pdfmode: str | None = "screen") 
     ensure_build_dir()
     run_tag_by_dir()
     run_generate_toc()
+    run_generate_order_snapshot()
     ensure_metadata_json()
 
     inputs = read_book_order()
@@ -1315,6 +1352,7 @@ def main() -> None:
         )
         sys.exit(1)
 
+    run_pre_build_hooks()
     update_build_metadata(build_stage)
     action()
 

@@ -41,6 +41,14 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.85;
 }
 
+.catalog-collection-heading .section-heading-glyph,
+.section-heading-glyph.collection-heading-glyph {
+  width: 2.05ch;
+  margin-left: -2.05ch;
+  margin-right: 0.55ch;
+  font-size: 1.1em;
+}
+
 /* Make lower-level headings slightly lighter-weight visually */
 h3, h4, h5, h6 {
   font-weight: 500;

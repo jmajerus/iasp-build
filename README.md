@@ -51,6 +51,17 @@ client deliverables.
 > mirror the directory names above when you extract the tooling so imports stay
 > predictable.
 
+### Module boundaries
+
+To keep `build_book.py` focused on orchestration, helper modules live in `iasp_tooling/lib/`:
+
+- `order_sources.py` – loads `book-order.txt` (and profile-specific order files), resolves group labels, and exposes a `BookOrderData` abstraction that downstream code can query without re-parsing text files. Add parsers, normalization helpers, or metadata shims here.
+- `container_walker.py` – expands directory manifests into concrete file trees, captures wrapper metadata (classes, glyphs, banners), and flattens nodes for consumers like the snapshot generator or Pandoc metadata writer. Extend this module when you need new manifest keywords or traversal behaviors.
+- `snapshot_renderer.py` – turns the walker output into Markdown via the `SnapshotEntry` dataclass. Augment this file if you need alternate renderers (HTML, JSON) or formatting tweaks for the canonical-order report.
+- `slot_manager.py` – updates standardized `<!-- SLOT:NAME:START/END -->` markers inside Markdown or other text files. Use it whenever a script needs to splice generated content into an existing document.
+
+Top-level CLIs (e.g., `build_book.py`, `generate_order_snapshot.py`) should only glue these modules together plus perform argument parsing. When adding new functionality, first decide whether it belongs in one of the modules above; if not, spin up another purpose-built module under `lib/` and keep the entry point thin.
+
 ------
 
 ## Supported build surfaces
@@ -85,6 +96,25 @@ number, timestamps (UTC + local), git commit info, and a `version-with-build`
 string so downstream systems can stamp provenance inside the manuscript. The same
 metadata feeds Pandoc placeholders (`{{meta:build-number}}`, etc.) so Markdown can
 reference the fresh values without manual edits.
+
+### Canonical order snapshot
+
+The root-level `generate_order_snapshot.py` script renders whatever `order_file`
+the active profile resolves to as a Markdown outline (`build/book-order.generated.md`
+for the flagship profile, `build/annexes/<profile>/book-order.generated.md` for
+annexes). `build_book.py` runs the generator before every profile-based build so
+authors always have a readable, indentation-friendly view of the canonical order
+without poking at the raw text list. The generator also walks every `.include`
+directive it finds (directory includes, literal/code inserts, list-only indexes)
+so Appendix W-style catalogs display their nested entries inline. Invoke the
+script directly when you just need to refresh the snapshot:
+
+```bash
+python3 generate_order_snapshot.py --order book-order.txt --max-depth 2
+```
+
+Use `--max-depth` to control how many include layers are expanded (defaults to
+`2`, which keeps nested structures visible without chasing infinite chains).
 
 ------
 
@@ -132,6 +162,18 @@ upload or version bump for special cases.
   `metadata.json`; the orchestrator will automatically load the new fields.
 - **Automate CI**: call `python3 build_book.py <target>` from your runner, then archive
   the contents of `build/<profile>`.
+- **Keep authoring + tooling commits separate**: stage prose/metadata edits and commit
+  them before touching automation. That way, if a script change needs to be rolled back,
+  you can revert the tooling commit without re-merging chapter or appendix content.
+
+### Pre-build hooks
+
+Place Python scripts under `scripts/pre_build_hooks/` (relative to the repository root)
+to run bespoke automation *before* every build target. `build_book.py` executes each
+`*.py` file in that directory—sorted alphabetically—using the current Python
+interpreter. Use this for helpers like the Appendix W catalog refresher so the
+generated content stays in sync without manual steps. Hooks should be idempotent and
+safe to run even when no changes are required.
 
 ------
 
@@ -150,6 +192,12 @@ upload or version bump for special cases.
 4. **Configurability layer** – document/env-vars for overriding paths (order file,
   metadata YAML, cover art) without editing the installed package. Provide a
   `custom/` overlay folder so users can shadow default LaTeX/CSS snippets safely.
+5. **Modular domains + themes** – treat IASP semantics and output formats as plug-in
+  layers. Allow the Lua filter to load optional domain packs (additional class mappings,
+  sidebar behaviors) dropped into `custom/domains/`, and let the build script discover
+  PDF/EPUB theme bundles that override LaTeX/CSS via config files. Packaging these as
+  add-ons keeps the core lightweight while making it easy to tailor semantics and
+  presentation for new audiences.
 5. **Documentation polish** – expand this README with diagrams, task screenshots, and a
   migration guide once the code is split. Add per-target HOWTOs plus VS Code setup notes.
 

@@ -14,13 +14,17 @@ local path = pandoc.path
 local system = pandoc.system
 
 local document_meta = {}
+local container_wrapper_map = {}
 local build_stage_cache = nil
 local article_mode_cache = nil
 local frontmatter_enabled_cache = nil
 local backmatter_enabled_cache = nil
 
+local build_wrapper_map
+
 local function capture_document_meta(meta)
   document_meta = {}
+  container_wrapper_map = {}
   build_stage_cache = nil
   article_mode_cache = nil
   frontmatter_enabled_cache = nil
@@ -30,7 +34,77 @@ local function capture_document_meta(meta)
       document_meta[key] = value
     end
   end
+  container_wrapper_map = build_wrapper_map(document_meta["container-wrappers"])
   return nil
+end
+
+local function meta_to_plain(node)
+  if node == nil then
+    return nil
+  end
+
+  if type(node) ~= "table" or node.t == nil then
+    return node
+  end
+
+  local tag = node.t
+
+  if tag == "MetaString" then
+    return node.text
+  elseif tag == "MetaInlines" or tag == "MetaBlocks" then
+    return utils.stringify(node)
+  elseif tag == "MetaBool" then
+    return node.boolean
+  elseif tag == "MetaList" then
+    local list = {}
+    for _, value in ipairs(node) do
+      table.insert(list, meta_to_plain(value))
+    end
+    return list
+  elseif tag == "MetaMap" then
+    local map = {}
+    for key, value in pairs(node) do
+      map[key] = meta_to_plain(value)
+    end
+    return map
+  elseif tag == "MetaInt" or tag == "MetaDouble" or tag == "MetaNumber" then
+    return node.value
+  end
+
+  return utils.stringify(node)
+end
+
+build_wrapper_map = function(meta_node)
+  local map = {}
+  if not meta_node then
+    return map
+  end
+
+  local plain = meta_to_plain(meta_node)
+  if type(plain) ~= "table" then
+    return map
+  end
+
+  local list
+  if plain[1] ~= nil then
+    list = plain
+  else
+    list = {}
+    for _, value in pairs(plain) do
+      table.insert(list, value)
+    end
+  end
+
+  for _, entry in ipairs(list) do
+    if type(entry) == "table" then
+      local rel_path = entry.path or entry.rel_path or entry.file
+      if rel_path and type(rel_path) == "string" then
+        map[rel_path] = entry
+      end
+    end
+  end
+
+  return map
 end
 
 local function meta_value(key)
@@ -302,6 +376,8 @@ end
 local SIDEBAR_GLYPH_UTF8 = "🗒"
 local SIDEBAR_BADGE_LABEL = "SIDEBAR"
 local SECTION_HEADING_GLYPH_CLASS = "section-heading-glyph"
+local COLLECTION_HEADING_GLYPH_CLASS = "collection-heading-glyph"
+local CATALOG_COLLECTION_HEADING_CLASS = "catalog-collection-heading"
 
 local function replace_meta_placeholders(str)
   if not str or str.t ~= "Str" then
@@ -334,19 +410,27 @@ local function sidebar_glyph_inlines()
   return { pandoc.Str(SIDEBAR_GLYPH_UTF8), pandoc.Space() }
 end
 
-local function section_heading_glyph_inlines(glyph_text)
+local function section_heading_glyph_inlines(glyph_text, variant)
   if not glyph_text or glyph_text == "" then
     return nil
   end
 
   if FORMAT:match("latex") then
+    local macro = "\\sectionheadingglyph"
+    if variant == "collection" then
+      macro = "\\collectionheadingglyph"
+    end
     return {
-      pandoc.RawInline("latex", "\\sectionheadingglyph{" .. latex_escape_argument(glyph_text) .. "}"),
+      pandoc.RawInline("latex", macro .. "{" .. latex_escape_argument(glyph_text) .. "}"),
       pandoc.Space()
     }
   end
 
-  local glyph_span = span_with_classes({ pandoc.Str(glyph_text) }, { SECTION_HEADING_GLYPH_CLASS })
+  local classes = { SECTION_HEADING_GLYPH_CLASS }
+  if variant == "collection" then
+    table.insert(classes, COLLECTION_HEADING_GLYPH_CLASS)
+  end
+  local glyph_span = span_with_classes({ pandoc.Str(glyph_text) }, classes)
   return { glyph_span, pandoc.Space() }
 end
 
@@ -429,7 +513,7 @@ local function header_has_section_heading_glyph(header)
   return false
 end
 
-local function inject_section_heading_glyph(header, glyph_text)
+local function inject_section_heading_glyph(header, glyph_text, glyph_variant)
   if not header or header.t ~= "Header" then
     return false
   end
@@ -438,7 +522,7 @@ local function inject_section_heading_glyph(header, glyph_text)
     return false
   end
 
-  local glyph_inlines = section_heading_glyph_inlines(glyph_text)
+  local glyph_inlines = section_heading_glyph_inlines(glyph_text, glyph_variant)
   if not glyph_inlines then
     return false
   end
@@ -1562,6 +1646,40 @@ local function handle_header(h)
     treat_as_chapter = true
   end
 
+  local glyph_attr_removed = false
+  local glyph_text = nil
+  if h.attributes then
+    local attr_value = h.attributes["section-glyph"]
+    if attr_value and attr_value ~= "" then
+      glyph_text = attr_value
+      h.attributes["section-glyph"] = nil
+      glyph_attr_removed = true
+    elseif h.attributes["heading-glyph"] and h.attributes["heading-glyph"] ~= "" then
+      glyph_text = h.attributes["heading-glyph"]
+      h.attributes["heading-glyph"] = nil
+      glyph_attr_removed = true
+    end
+  end
+
+  local glyph_variant = nil
+  if h.attributes then
+    local variant_attr = h.attributes["section-glyph-variant"]
+    if variant_attr and variant_attr ~= "" then
+      glyph_variant = variant_attr
+      h.attributes["section-glyph-variant"] = nil
+      glyph_attr_removed = true
+    end
+  end
+
+  if not glyph_variant and has_class(h, CATALOG_COLLECTION_HEADING_CLASS) then
+    glyph_variant = "collection"
+  end
+
+  local glyph_injected = false
+  if glyph_text and glyph_text ~= "" then
+    glyph_injected = inject_section_heading_glyph(h, glyph_text, glyph_variant)
+  end
+
   if treat_as_chapter then
     local out = {}
     if first_chapter_seen then
@@ -1577,7 +1695,7 @@ local function handle_header(h)
   end
 
   if not wants_latex then
-    return (semantics_changed or role_scrubbed or stage_changed or section_changed) and h or nil
+    return (semantics_changed or role_scrubbed or stage_changed or section_changed or glyph_attr_removed or glyph_injected) and h or nil
   end
 
   if has_epub_type(h.attributes, "appendix") then
@@ -1590,7 +1708,7 @@ local function handle_header(h)
     return out
   end
 
-  return (semantics_changed or role_scrubbed or stage_changed or section_changed) and h or nil
+  return (semantics_changed or role_scrubbed or stage_changed or section_changed or glyph_attr_removed or glyph_injected) and h or nil
 end
 
 local function handle_span(span)

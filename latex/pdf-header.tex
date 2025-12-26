@@ -83,6 +83,10 @@
   \llap{{\noteglyphfont #1}\hspace{0.6em}}%%
 }
 
+\newcommand{\collectionheadingglyph}[1]{%%
+  \llap{{\noteglyphfont #1}\hspace{0.35em}}%% tighter hang for collection-level glyphs
+}
+
 % Pandoc will set \pdfmode via --variable=pdfmode:MODE or metadata.
 % We interpret that into booleans for use below. If \pdfmode is
 % undefined or not 'print', we default to 'screen'.
