@@ -29,6 +29,24 @@ def load_config(path: Path) -> dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
+def load_sequence_items(path: str | Path) -> list[dict[str, Any]]:
+    source_path = ensure_absolute(path)
+    if not source_path.exists():
+        raise FileNotFoundError(f"Sequence file '{path}' not found")
+
+    with source_path.open(encoding="utf-8") as handle:
+        payload = yaml.safe_load(handle) or []
+
+    if isinstance(payload, dict):
+        raw_items = payload.get("items") or []
+    elif isinstance(payload, list):
+        raw_items = payload
+    else:
+        raw_items = []
+
+    return [dict(item) for item in raw_items if isinstance(item, dict)]
+
+
 def ensure_absolute(path: str | Path) -> Path:
     candidate = Path(path)
     return candidate if candidate.is_absolute() else (PROJECT_ROOT / candidate)
@@ -46,7 +64,7 @@ def escape_attr_value(value: Any) -> str:
     return text.replace('"', "&quot;")
 
 
-def resolve_collections(config: dict[str, Any]) -> list[dict[str, Any]]:
+def resolve_collections(config: dict[str, Any], include_defaults: dict[str, Any]) -> list[dict[str, Any]]:
     """Normalize domain-specific keys into the generic collections/items shape."""
 
     vocabulary = config.get("vocabulary") or {}
@@ -62,7 +80,15 @@ def resolve_collections(config: dict[str, Any]) -> list[dict[str, Any]]:
     for collection in raw_collections:
         if not isinstance(collection, dict):
             continue
+
+        entry_type = collection.get("type") or collection.get("entry_type") or "collection"
+        if entry_type == "include":
+            normalized.append(normalize_include_entry(collection, include_defaults))
+            continue
+
         collection_copy = {**collection}
+        collection_copy.pop("type", None)
+        collection_copy["entry_type"] = "collection"
         raw_items = collection_copy.pop(items_field, None)
         if raw_items is None and items_field != "items":
             raw_items = collection.get("items", [])
@@ -100,6 +126,8 @@ def build_item_block(item: dict[str, Any], defaults: dict[str, Any]) -> str:
 
 def normalize_item(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     normalized = {**item}
+    if not normalized.get("source_file") and normalized.get("path"):
+        normalized["source_file"] = normalized["path"]
     source_file = normalized.get("source_file")
     if source_file:
         source_path = ensure_absolute(source_file)
@@ -109,6 +137,20 @@ def normalize_item(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, 
         normalized["exists"] = False
     normalized.setdefault("slug", normalized.get("title", "").lower().replace(" ", "-"))
     normalized.setdefault("rendered_block", build_item_block(normalized, defaults))
+    item_type = normalized.get("item_type", "pattern")
+    normalized["item_type"] = item_type
+    if "skip_index" in normalized:
+        normalized["skip_index"] = bool(normalized["skip_index"])
+    else:
+        normalized["skip_index"] = item_type != "pattern"
+    return normalized
+
+
+def normalize_include_entry(entry: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_item(entry, defaults)
+    normalized["entry_type"] = "include"
+    normalized.setdefault("item_type", normalized.get("item_type", "sidebar"))
+    normalized.setdefault("items", [])
     return normalized
 
 
@@ -125,6 +167,16 @@ def render_collection_sections(collections: list[dict[str, Any]], options: dict[
     lines: list[str] = []
 
     for collection in collections:
+        entry_type = collection.get("entry_type", "collection")
+        if entry_type != "collection":
+            if not collection.get("exists"):
+                lines.append(
+                    f"<!-- WARNING: Missing source '{collection.get('source_file')}' for inline include -->"
+                )
+            lines.append(collection["rendered_block"])
+            lines.append("")
+            continue
+
         title = collection["title"]
         glyph_value = collection.get(collection_glyph_field) if collection_glyph_field else None
 
@@ -170,11 +222,17 @@ def render_collection_index(collections: list[dict[str, Any]], options: dict[str
     lines: list[str] = []
 
     for collection in collections:
+        if collection.get("entry_type", "collection") != "collection":
+            continue
         lines.append(f"**{collection['title']}**")
         lines.append("")
         items = collection.get("items", [])
-        for idx, item in enumerate(items, start=1):
-            bullet = f"{idx}." if list_style == "ordered" else "-"
+        counter = 0
+        for item in items:
+            if item.get("skip_index"):
+                continue
+            counter += 1
+            bullet = f"{counter}." if list_style == "ordered" else "-"
             label = item.get(item_label, item.get("title", "Unnamed"))
             status_note = f" (TODO: {item['status']})" if item.get("status") else ""
             lines.append(f"{bullet} {label}{status_note}")
@@ -183,9 +241,34 @@ def render_collection_index(collections: list[dict[str, Any]], options: dict[str
     return "\n".join(line.rstrip() for line in lines).rstrip() + "\n"
 
 
+def render_include_sequence(collections: list[dict[str, Any]], options: dict[str, Any]) -> str:
+    items = options.get("items") or []
+    try:
+        item_spacing = int(options.get("item_spacing", 1))
+    except (TypeError, ValueError):
+        item_spacing = 1
+    item_spacing = max(0, item_spacing)
+    item_divider = options.get("item_divider")
+    lines: list[str] = []
+
+    for idx, item in enumerate(items):
+        if not item.get("exists"):
+            lines.append(
+                f"<!-- WARNING: Missing source '{item.get('source_file')}' for {item.get('title')} -->"
+            )
+        lines.append(item["rendered_block"])
+        if item_divider and idx < len(items) - 1:
+            lines.append(item_divider)
+        for _ in range(item_spacing):
+            lines.append("")
+
+    return "\n".join(line.rstrip() for line in lines).rstrip() + "\n"
+
+
 RENDERERS: dict[str, Renderer] = {
     "collection_sections": render_collection_sections,
     "collection_index": render_collection_index,
+    "include_sequence": render_include_sequence,
 }
 
 
@@ -250,13 +333,17 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
-    collections = resolve_collections(config)
+    include_defaults = config.get("include_defaults", {})
+    collections = resolve_collections(config, include_defaults)
     if not collections:
         raise SystemExit("No collections defined in mapping configuration.")
 
     normalized: list[dict[str, Any]] = []
-    include_defaults = config.get("include_defaults", {})
     for collection in collections:
+        if collection.get("entry_type") != "collection":
+            normalized.append(collection)
+            continue
+
         collection_copy = {**collection}
         items = [
             normalize_item(item, include_defaults)
@@ -266,6 +353,27 @@ def main(argv: list[str] | None = None) -> None:
         normalized.append(collection_copy)
 
     insertions = config.get("insertions", [])
+    for insertion in insertions:
+        raw_items: list[dict[str, Any]] = []
+
+        inline_items = insertion.get("items")
+        if inline_items:
+            raw_items.extend(item for item in inline_items if isinstance(item, dict))
+
+        items_from = insertion.get("items_from")
+        if items_from:
+            raw_items.extend(load_sequence_items(items_from))
+
+        if not raw_items:
+            continue
+
+        normalized_items = [
+            normalize_item(item, include_defaults)
+            for item in raw_items
+        ]
+        options = insertion.setdefault("options", {})
+        options["items"] = normalized_items
+
     if not insertions:
         raise SystemExit("No insertion points configured; nothing to update.")
 

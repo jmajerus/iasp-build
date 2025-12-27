@@ -19,6 +19,7 @@ local build_stage_cache = nil
 local article_mode_cache = nil
 local frontmatter_enabled_cache = nil
 local backmatter_enabled_cache = nil
+local identifier_registry = {}
 
 local build_wrapper_map
 
@@ -29,6 +30,7 @@ local function capture_document_meta(meta)
   article_mode_cache = nil
   frontmatter_enabled_cache = nil
   backmatter_enabled_cache = nil
+  identifier_registry = {}
   if meta then
     for key, value in pairs(meta) do
       document_meta[key] = value
@@ -401,6 +403,30 @@ local function replace_meta_placeholders(str)
   end
 
   return nil
+end
+
+local function ensure_unique_identifier(el)
+  if not el or not el.identifier or el.identifier == "" then
+    return false
+  end
+
+  local base = el.identifier
+  local count = identifier_registry[base]
+  if not count then
+    identifier_registry[base] = 1
+    return false
+  end
+
+  repeat
+    count = count + 1
+    local candidate = base .. "-" .. tostring(count)
+    if not identifier_registry[candidate] then
+      el.identifier = candidate
+      identifier_registry[base] = count
+      identifier_registry[candidate] = 1
+      return true
+    end
+  until false
 end
 
 local function sidebar_glyph_inlines()
@@ -1158,6 +1184,49 @@ local function basename_without_ext(raw)
   return filename
 end
 
+local function parse_target_sequence(raw)
+  if not raw or raw == "" then
+    return {}
+  end
+
+  local entries = {}
+  for entry in raw:gmatch("[^,]+") do
+    local trimmed = entry:gsub("^%s+", ""):gsub("%s+$", "")
+    if trimmed ~= "" then
+      table.insert(entries, trimmed)
+    end
+  end
+  return entries
+end
+
+local function read_sequence_file_specs(spec_path)
+  if not spec_path or spec_path == "" then
+    return {}
+  end
+
+  local resolved = resolve_include_path(spec_path)
+  if not resolved then
+    io.stderr:write("[include] unable to resolve list file " .. spec_path .. "\n")
+    return {}
+  end
+
+  local fh, err = io.open(resolved, "r")
+  if not fh then
+    io.stderr:write("[include] unable to read list file " .. resolved .. ": " .. (err or "") .. "\n")
+    return {}
+  end
+
+  local specs = {}
+  for line in fh:lines() do
+    local trimmed = line:gsub("^%s+", ""):gsub("%s+$", "")
+    if trimmed ~= "" and not trimmed:match("^#") then
+      table.insert(specs, trimmed)
+    end
+  end
+  fh:close()
+  return specs
+end
+
 local function list_markdown_files(dir)
   local files = {}
   local p = io.popen("ls -1 '" .. dir .. "'")
@@ -1215,18 +1284,72 @@ local function expand_include_div(div)
     or attrs["data-path"]
     or attrs["data-src"]
     or attrs["data-file"]
-  if not target or target == "" then
+
+  local sequence_attr = attrs.sequence
+    or attrs.paths
+    or attrs.files
+    or attrs.targets
+    or attrs["data-sequence"]
+    or attrs["data-paths"]
+    or attrs["data-files"]
+    or attrs["data-targets"]
+
+  local sequence_file_attr = attrs["sequence-file"]
+    or attrs["paths-file"]
+    or attrs["files-file"]
+    or attrs["targets-file"]
+    or attrs["list-file"]
+    or attrs["data-sequence-file"]
+    or attrs["data-paths-file"]
+    or attrs["data-files-file"]
+    or attrs["data-targets-file"]
+    or attrs["data-list-file"]
+
+  local sequence_specs = nil
+  if sequence_attr and sequence_attr ~= "" then
+    sequence_specs = parse_target_sequence(sequence_attr)
+  elseif target and target:find(",") then
+    sequence_specs = parse_target_sequence(target)
+  end
+
+  local function append_sequence_specs(spec_list)
+    if not spec_list or #spec_list == 0 then
+      return
+    end
+    sequence_specs = sequence_specs or {}
+    for _, spec in ipairs(spec_list) do
+      table.insert(sequence_specs, spec)
+    end
+  end
+
+  if sequence_file_attr and sequence_file_attr ~= "" then
+    local file_specs = {}
+    local file_entries = parse_target_sequence(sequence_file_attr)
+    if #file_entries == 0 then
+      file_entries = { sequence_file_attr }
+    end
+    for _, file_spec in ipairs(file_entries) do
+      local resolved_specs = read_sequence_file_specs(file_spec)
+      append_sequence_specs(resolved_specs)
+    end
+  end
+
+  if (not target or target == "") and (not sequence_specs or #sequence_specs == 0) then
     io.stderr:write("[include] missing path attribute on include block\n")
     return { pandoc.Para({ pandoc.Str("[include missing path]") }) }
   end
 
-  local resolved = resolve_include_path(target)
-  if not resolved then
-    io.stderr:write("[include] unable to resolve path for " .. target .. "\n")
-    return { pandoc.Para({ pandoc.Str("[include path error]") }) }
+  local resolved = nil
+  if not sequence_specs then
+    resolved = resolve_include_path(target)
+    if not resolved then
+      io.stderr:write("[include] unable to resolve path for " .. target .. "\n")
+      return { pandoc.Para({ pandoc.Str("[include path error]") }) }
+    end
   end
 
   local include_targets = {}
+  local first_target_spec = nil
 
   local attr_mode = attrs.mode
     or attrs["data-mode"]
@@ -1289,14 +1412,25 @@ local function expand_include_div(div)
     or has_class(div, "literal")
     or attr_truthy(attrs.literal)
 
-  local is_dir = attr_mode == "dir" or resolved:sub(-1) == "/" or path_is_dir(resolved)
-  local namespace_ids = is_dir
-  local raw_namespace = attrs["namespace-ids"] or attrs["data-namespace-ids"]
-  if raw_namespace ~= nil then
-    namespace_ids = attr_truthy(raw_namespace)
-  end
-
-  if is_dir then
+  if sequence_specs and #sequence_specs > 0 then
+    for _, spec in ipairs(sequence_specs) do
+      local resolved_spec = resolve_include_path(spec)
+      if not resolved_spec then
+        io.stderr:write("[include] unable to resolve path for " .. spec .. "\n")
+      else
+        table.insert(include_targets, resolved_spec)
+        if not first_target_spec then
+          first_target_spec = spec
+          if not resolved then
+            resolved = resolved_spec
+          end
+        end
+      end
+    end
+    if #include_targets == 0 then
+      return { pandoc.Para({ pandoc.Str("[include path error]") }) }
+    end
+  elseif is_dir then
     local files = list_markdown_files(resolved:gsub("/$", ""))
     if #files == 0 then
       io.stderr:write("[include] no markdown files found in directory " .. resolved .. "\n")
@@ -1305,6 +1439,19 @@ local function expand_include_div(div)
     include_targets = files
   else
     include_targets = { resolved }
+  end
+
+  local is_dir = attr_mode == "dir"
+  if not is_dir and resolved then
+    if resolved:sub(-1) == "/" or path_is_dir(resolved) then
+      is_dir = true
+    end
+  end
+
+  local namespace_ids = is_dir
+  local raw_namespace = attrs["namespace-ids"] or attrs["data-namespace-ids"]
+  if raw_namespace ~= nil then
+    namespace_ids = attr_truthy(raw_namespace)
   end
 
   if listing_mode and #include_targets > 0 then
@@ -1397,7 +1544,7 @@ local function expand_include_div(div)
 
   local final_banner_text = banner_text
   if not final_banner_text and banner_use_filename then
-    final_banner_text = basename_without_ext(target)
+    final_banner_text = basename_without_ext(first_target_spec or target)
       or basename_without_ext(resolved)
   end
 
@@ -1538,6 +1685,10 @@ local function handle_div(div)
 
   local mutated = semantics_changed or stage_changed or section_changed
 
+  if ensure_unique_identifier(div) then
+    mutated = true
+  end
+
   div.attributes = div.attributes or {}
 
   local has_sidebar_semantics = has_epub_type(div.attributes, "aside") or has_epub_type(div.attributes, "sidebar")
@@ -1648,6 +1799,10 @@ local function handle_header(h)
 
   local glyph_attr_removed = false
   local glyph_text = nil
+
+  if ensure_unique_identifier(h) then
+    semantics_changed = true
+  end
   if h.attributes then
     local attr_value = h.attributes["section-glyph"]
     if attr_value and attr_value ~= "" then
