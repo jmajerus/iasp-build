@@ -19,7 +19,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - dependency notice
 
 TOOLING_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = TOOLING_ROOT.parent
-DEFAULT_CONFIG = PROJECT_ROOT / "scripts" / "pattern_catalog" / "mapping.yaml"
+DEFAULT_CONFIG = PROJECT_ROOT / "preprocessor" / "preprocess.yaml"
+DEFAULT_INDEX_ITEM_TYPE = "entry"
+LEGACY_INDEX_ITEM_TYPE = "pattern"
 
 Renderer = Callable[[list[dict[str, Any]], dict[str, Any]], str]
 
@@ -137,12 +139,14 @@ def normalize_item(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, 
         normalized["exists"] = False
     normalized.setdefault("slug", normalized.get("title", "").lower().replace(" ", "-"))
     normalized.setdefault("rendered_block", build_item_block(normalized, defaults))
-    item_type = normalized.get("item_type", "pattern")
+    item_type = normalized.get("item_type", DEFAULT_INDEX_ITEM_TYPE)
+    if item_type == LEGACY_INDEX_ITEM_TYPE:
+        item_type = DEFAULT_INDEX_ITEM_TYPE
     normalized["item_type"] = item_type
     if "skip_index" in normalized:
         normalized["skip_index"] = bool(normalized["skip_index"])
     else:
-        normalized["skip_index"] = item_type != "pattern"
+        normalized["skip_index"] = item_type != DEFAULT_INDEX_ITEM_TYPE
     return normalized
 
 
@@ -323,7 +327,7 @@ def main(argv: list[str] | None = None) -> None:
         "--config",
         type=Path,
         default=DEFAULT_CONFIG,
-        help="Path to the catalog mapping YAML (defaults to mapping.yaml).",
+        help="Path to the preprocess configuration YAML (defaults to preprocess.yaml).",
     )
     parser.add_argument(
         "--dry-run",
@@ -336,7 +340,7 @@ def main(argv: list[str] | None = None) -> None:
     include_defaults = config.get("include_defaults", {})
     collections = resolve_collections(config, include_defaults)
     if not collections:
-        raise SystemExit("No collections defined in mapping configuration.")
+        raise SystemExit("No collections defined in the preprocess configuration.")
 
     normalized: list[dict[str, Any]] = []
     for collection in collections:
