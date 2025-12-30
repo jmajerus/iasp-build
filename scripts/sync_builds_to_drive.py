@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..lib import config as iasp_config
+
 MTIME_SKEW_TOLERANCE = 0.5  # seconds; GVFS mounts can quantize mtimes
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,13 +21,7 @@ BUILD_DIR = ROOT / "build"
 ANNEXES_DIR = BUILD_DIR / "annexes"
 ARTICLES_DIR = BUILD_DIR / "articles"
 PATCH_BUMP_SCRIPT = ROOT / "iasp_tooling" / "scripts" / "bump_patch_version.py"
-DEFAULT_DRIVE_PATH = \
-    Path(
-        os.environ.get(
-            "DRIVE_SYNC_TARGET",
-            "/run/user/1000/gvfs/google-drive:host=gmail.com,user=skyanchor/0AI3PRVVN3WXRUk9PVA/1MgQaE_TLTrlVIvZNBg9isynjr4ZWo3W_",
-        )
-    )
+LEGACY_FALLBACK_DRIVE_PATH = "/run/user/1000/gvfs/google-drive:host=gmail.com,user=skyanchor/0AI3PRVVN3WXRUk9PVA/1MgQaE_TLTrlVIvZNBg9isynjr4ZWo3W_"
 
 ARTIFACTS = [
     ("The-Struggle-Against-Dehumanization.epub", "EPUB"),
@@ -35,6 +31,13 @@ ARTIFACTS = [
     ("The-Struggle-Against-Dehumanization.rtf", "RTF"),
 ]
 
+CONFIG = iasp_config.load_config()
+GOOGLE_DRIVE_CONFIG = CONFIG.get("google_drive")
+if not isinstance(GOOGLE_DRIVE_CONFIG, dict):
+    GOOGLE_DRIVE_CONFIG = {}
+CONFIG_PATH = iasp_config.resolve_config_path()
+CONFIG_HINT = f"{CONFIG_PATH} (override via {iasp_config.CONFIG_ENV_VAR})"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync build outputs to Google Drive")
@@ -42,14 +45,14 @@ def parse_args() -> argparse.Namespace:
         "destination",
         nargs="?",
         help=(
-            "Optional path to the Drive folder. Overrides the DRIVE_SYNC_TARGET env "
-            "variable and the default GVFS mount path."
+            "Optional path to the Drive folder. Overrides config, the DRIVE_SYNC_TARGET env "
+            "variable, and the fallback GVFS mount path."
         ),
     )
     parser.add_argument(
         "--skip-missing",
         action="store_true",
-        help="Skip missing artifacts without returning a non-zero exit code.",
+        help="Skip missing artifacts without returning a non-zero exit code (also configurable).",
     )
     parser.add_argument(
         "--no-version-bump",
@@ -59,10 +62,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_destination(cli_value: str | None) -> Path:
-    if cli_value:
-        return Path(cli_value)
-    return DEFAULT_DRIVE_PATH
+def ensure_absolute_path(value: str | Path | None) -> Path | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    candidate = Path(text).expanduser()
+    if not candidate.is_absolute():
+        candidate = (ROOT / candidate).resolve()
+    return candidate
+
+
+def resolve_destination(cli_value: str | None) -> Path | None:
+    path = ensure_absolute_path(cli_value)
+    if path:
+        return path
+
+    env_value = os.environ.get("DRIVE_SYNC_TARGET")
+    path = ensure_absolute_path(env_value)
+    if path:
+        return path
+
+    cfg_value = GOOGLE_DRIVE_CONFIG.get("destination")
+    path = ensure_absolute_path(cfg_value)
+    if path:
+        return path
+
+    fallback_value = GOOGLE_DRIVE_CONFIG.get("default_destination", LEGACY_FALLBACK_DRIVE_PATH)
+    return ensure_absolute_path(fallback_value)
 
 
 def ensure_destination(dest: Path) -> None:
@@ -151,7 +179,11 @@ def main() -> None:
     destination = resolve_destination(args.destination)
 
     if not destination:
-        print("!! No Drive destination configured. Pass a path or set DRIVE_SYNC_TARGET.", file=sys.stderr)
+        print(
+            "!! No Drive destination configured. Provide a path, set DRIVE_SYNC_TARGET, "
+            f"or set google_drive.destination inside {CONFIG_HINT}.",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     ensure_destination(destination)
@@ -163,6 +195,12 @@ def main() -> None:
     if not BUILD_DIR.exists():
         print("!! Build directory does not exist yet. Generate artifacts before syncing.", file=sys.stderr)
         sys.exit(4)
+
+    skip_missing_config = bool(GOOGLE_DRIVE_CONFIG.get("skip_missing_artifacts"))
+    skip_missing = args.skip_missing or skip_missing_config
+    skip_missing_label = None
+    if skip_missing:
+        skip_missing_label = "--skip-missing flag" if args.skip_missing else "google_drive.skip_missing_artifacts"
 
     missing: list[str] = []
     for filename, label in ARTIFACTS:
@@ -189,18 +227,23 @@ def main() -> None:
     else:
         print("\n-- No annex outputs to sync (build/annexes missing).")
 
-    if missing and not args.skip_missing:
+    if missing and not skip_missing:
         print(
             "!! Some artifacts were missing: " + ", ".join(missing) +
-            " (rerun build_book.py before syncing, or pass --skip-missing)",
+            " (rerun build_book.py before syncing, or enable skipping via --skip-missing / config)",
             file=sys.stderr,
         )
         sys.exit(5)
+    elif missing and skip_missing_label:
+        print(f"-- Missing artifacts ignored ({skip_missing_label}).")
 
-    if not args.no_version_bump:
-        bump_patch_version()
-    else:
+    version_bump_enabled = bool(GOOGLE_DRIVE_CONFIG.get("version_bump", True))
+    if args.no_version_bump:
         print("-- Skipping version bump (per --no-version-bump)")
+    elif not version_bump_enabled:
+        print("-- Skipping version bump (disabled via config)")
+    else:
+        bump_patch_version()
 
     print(f"Done. Synced artifacts to {destination}")
 

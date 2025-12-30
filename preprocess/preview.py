@@ -10,8 +10,12 @@ import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from iasp_tooling.preprocess import config as preprocess_config
 FILTER = PROJECT_ROOT / "iasp_tooling" / "lua" / "catalog_collections.lua"
-DEFAULT_CONFIG = PROJECT_ROOT / "preprocessor" / "preprocess.yaml"
+DEFAULT_CONFIG = preprocess_config.resolve_config_path()
 
 try:
     import yaml  # type: ignore
@@ -118,9 +122,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    config_path = Path(args.config).expanduser()
-    if not config_path.is_absolute():
-        config_path = (PROJECT_ROOT / config_path).resolve()
+    config_path = preprocess_config.ensure_absolute(args.config)
     if not config_path.exists():
         raise SystemExit(f"Preprocess config not found at {config_path}")
 

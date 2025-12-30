@@ -241,6 +241,13 @@ hr {
   margin: 1.5em 0;
 }
 
+hr.catalog-divider {
+  border: none;
+  border-top: 1px solid #999;
+  margin: 1.5em 0;
+  width: 100%;
+}
+
 /* Blockquotes (shared Typora-style appearance) */
 blockquote {
   margin: 1.2em 0;

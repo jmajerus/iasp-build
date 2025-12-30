@@ -12,8 +12,13 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from iasp_tooling.preprocess import config as preprocess_config
+
 DEFAULT_INPUT = None
-DEFAULT_CONFIG = PROJECT_ROOT / "preprocessor" / "preprocess.yaml"
+DEFAULT_CONFIG = preprocess_config.resolve_config_path()
 DEFAULT_FILTER = PROJECT_ROOT / "iasp_tooling" / "lua" / "catalog_collections.lua"
 OUTPUT_DIR = PROJECT_ROOT / ".build"
 STAMP_DIR = PROJECT_ROOT / ".build" / "preprocess-stamps"
@@ -94,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.input:
         parser.error("An input Markdown file is required")
     input_path = ensure_absolute(args.input)
-    config_path = ensure_absolute(args.config)
+    config_path = preprocess_config.ensure_absolute(args.config)
     filter_path = ensure_absolute(args.filter)
 
     for candidate, label in ((input_path, "input"), (config_path, "config"), (filter_path, "filter")):

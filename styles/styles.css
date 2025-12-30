@@ -395,6 +395,18 @@ h1[epub|type~="appendix"] {
    Miscellaneous
    ========================================================================== */
 
+/* Manual page breaks (use with `:::.page-break` blocks in markdown) */
+.page-break,
+.pagebreak {
+  display: block;
+  break-before: page !important;
+  page-break-before: always !important;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  height: 0;
+}
+
 /* Images centered by default */
 img {
   display: block;
@@ -408,4 +420,11 @@ hr {
   border: none;
   border-top: 1px solid #ccc;
   margin: 1.5em 0;
+}
+
+hr.catalog-divider {
+  border: none;
+  border-top: 1px solid #999;
+  margin: 1.5em 0;
+  width: 100%;
 }

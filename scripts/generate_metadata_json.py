@@ -1,59 +1,71 @@
 #!/usr/bin/env python3
-"""Generate metadata.json for Pandoc builds.
-
-Edit the METADATA dict below and run this script to regenerate the
-machine-written metadata.json file.
-"""
+"""Generate metadata.json from the canonical metadata.yaml file."""
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-DEST = ROOT / "metadata.json"
+try:  # PyYAML is already a dependency for other tooling modules
+    import yaml  # type: ignore
+except ImportError as exc:  # pragma: no cover - defensive guard for missing dependency
+    yaml = None
+    YAML_IMPORT_ERROR = exc
+else:
+    YAML_IMPORT_ERROR = None
 
-METADATA: dict[str, object] = {
-    "author": ["John Majerus"],
-    "title": "The Struggle Against Dehumanization",
-    "subtitle": "Technology, Judgment, and Human Dignity in the Age of AI",
-    "language": "en-US",
-    "rights": "© 2025 John Majerus. All rights reserved.",
-    "publisher": "Independent",
-    "description": (
-        "A multi-part series on how AI technologies contribute to "
-        "dehumanization in the age of automation, drawing on real-world "
-        "cases, philosophical frameworks, and actionable solutions."
-    ),
-    "comment": "Prepublication proof. Not for distribution.",
-    "keywords": [
-        "AI Ethics",
-        "Dehumanization",
-        "Technology and Society",
-        "Human Dignity",
-        "Automation",
-        "Philosophy",
-    ],
-    "linernotes": True,
-    "revision": True,
-    "abstract": (
-        "This work explores the ethical and societal implications of AI-driven "
-        "dehumanization, examining how technology can erode human dignity and "
-        "proposing strategies to uphold humanity in an increasingly automated world."
-    ),
-    "cover-image": "cover.png",
-    "documentclass": "book",
-    "classoption": ["oneside"],
-    "version": "0.3.20",
-}
+ROOT = Path(__file__).resolve().parents[2]
+METADATA_YAML = ROOT / "metadata.yaml"
+METADATA_JSON = ROOT / "metadata.json"
+
+
+def load_metadata_yaml() -> dict[str, object]:
+    if yaml is None:
+        print(
+            "!! PyYAML is required to parse metadata.yaml (pip install pyyaml)",
+            file=sys.stderr,
+        )
+        if YAML_IMPORT_ERROR is not None:
+            print(f"   Underlying import error: {YAML_IMPORT_ERROR}", file=sys.stderr)
+        sys.exit(2)
+
+    try:
+        raw_text = METADATA_YAML.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"!! Unable to read {METADATA_YAML}: {exc}", file=sys.stderr)
+        sys.exit(3)
+
+    try:
+        data = yaml.safe_load(raw_text)
+    except Exception as exc:  # pragma: no cover - PyYAML failure path
+        print(f"!! Failed to parse {METADATA_YAML}: {exc}", file=sys.stderr)
+        sys.exit(4)
+
+    if not isinstance(data, dict):
+        print(
+            f"!! Expected {METADATA_YAML} to define a mapping at the top level",
+            file=sys.stderr,
+        )
+        sys.exit(5)
+    return data
+
+
+def write_metadata_json(metadata: dict[str, object]) -> None:
+    payload = json.dumps(metadata, indent=2, ensure_ascii=False) + "\n"
+    try:
+        METADATA_JSON.write_text(payload, encoding="utf-8")
+    except OSError as exc:
+        print(f"!! Unable to write {METADATA_JSON}: {exc}", file=sys.stderr)
+        sys.exit(6)
 
 
 def main() -> None:
-    DEST.write_text(
-        json.dumps(METADATA, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    metadata = load_metadata_yaml()
+    write_metadata_json(metadata)
+    print(
+        f"Wrote {METADATA_JSON.relative_to(ROOT)} from {METADATA_YAML.relative_to(ROOT)}"
     )
-    print(f"Wrote {DEST} ({len(METADATA)} top-level fields)")
 
 
 if __name__ == "__main__":

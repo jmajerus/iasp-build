@@ -25,6 +25,7 @@ Usage:
     python build_book.py quote-playground  # tiny fixture for quote styling
 """
 
+import copy
 import json
 import os
 import re
@@ -37,9 +38,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
+from .lib import config as iasp_config
+from .lib import layout_overrides, vscode_tasks
 from .lib.order_sources import load_book_order
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
+from .preprocess import config as preprocess_config
 
 # Detect repo + tooling roots relative to this module
 TOOLING_ROOT = Path(__file__).resolve().parent
@@ -55,8 +60,11 @@ BOOK_ORDER = ROOT / "book-order.txt"
 STYLES_DIR = TOOLING_ROOT / "styles"
 CSS_SHARED = STYLES_DIR / "styles-shared.css"
 CSS_EPUB = STYLES_DIR / "styles-epub.css"
-CSS_FILES = [CSS_SHARED, CSS_EPUB]
+CSS_OVERRIDE = BUILD_DIR / layout_overrides.CSS_OVERRIDE_NAME
+PDF_LAYOUT_OVERRIDES = BUILD_DIR / layout_overrides.PDF_OVERRIDE_NAME
+BASE_CSS_FILES = [CSS_SHARED, CSS_EPUB]
 IASP_FILTER = TOOLING_ROOT / "lua" / "iasp-semantics.lua"
+CATALOG_COLLECTIONS_FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
 METADATA_JSON = ROOT / "metadata.json"
 METADATA_YAML = ROOT / "metadata.yaml"
 BUILD_PROFILES_FILE = ROOT / "build-profiles.json"
@@ -86,6 +94,52 @@ QUOTE_PLAYGROUND_TEX = BUILD_DIR / "quote-playground.tex"
 EPUBCHECK_PROFILE = "EPUB_3.3"
 
 DEFAULT_OUTPUT_BASENAME = "The-Struggle-Against-Dehumanization"
+
+CONFIG = iasp_config.load_config()
+
+
+def _config_section(name: str) -> dict[str, Any]:
+    value = CONFIG.get(name)
+    return value if isinstance(value, dict) else {}
+
+
+def _config_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, bool):
+        return value
+    return default
+
+
+def _config_int(value: Any, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+PREPROCESS_SETTINGS = _config_section("preprocessor")
+TOC_SETTINGS = _config_section("toc")
+LAYOUT_SETTINGS = _config_section("layout")
+TASK_SETTINGS = _config_section("tasks")
+PREPROCESS_ACTIVE = preprocess_config.is_enabled()
+TOC_ENABLED = _config_bool(TOC_SETTINGS.get("enabled"), True)
+TOC_INCLUDE_APPENDICES = _config_bool(TOC_SETTINGS.get("include_appendices"), True)
+TOC_MAX_DEPTH = _config_int(TOC_SETTINGS.get("max_depth"), 3, minimum=1, maximum=6)
 
 
 @dataclass
@@ -210,6 +264,33 @@ ID_ATTR_PATTERN = re.compile(r'id="([^"\s]+)"')
 CITATION_PATTERN = re.compile(r'(?<![A-Za-z0-9_])@([A-Za-z0-9][\w:.-]*)')
 BIB_ENTRY_PATTERN = re.compile(r'@\w+\s*\{\s*([^,\s]+)', re.MULTILINE)
 
+XHTML_NS = "http://www.w3.org/1999/xhtml"
+EPUB_NS = "http://www.idpf.org/2007/ops"
+NCX_NS = "http://www.daisy.org/z3986/2005/ncx/"
+XML_DECL = '<?xml version="1.0" encoding="UTF-8"?>'
+NAV_DOCTYPE = "<!DOCTYPE html>"
+XHTML = f"{{{XHTML_NS}}}"
+EPUB = f"{{{EPUB_NS}}}"
+NCX = f"{{{NCX_NS}}}"
+
+
+@dataclass
+class NavHeading:
+    level: int
+    identifier: str
+    lead_text: str
+    children: list[ET.Element]
+    plain_text: str
+    subsections: list["NavHeading"]
+
+
+@dataclass
+class HeadingContent:
+    lead_text: str
+    children: list[ET.Element]
+    plain_text: str
+    subheadings: list[NavHeading]
+
 BIBLIOGRAPHY_FILES = [ROOT / "references.bib"]
 SPECIAL_CITATION_KEYS = {"*", "-"}
 
@@ -284,6 +365,9 @@ def run_generate_toc() -> None:
     if not TOC_GENERATOR.exists():
         print("-- generate_toc.py not found; skipping TOC generation.")
         return
+        if not TOC_ENABLED:
+            print("-- TOC generation disabled via config; skipping generate_toc.py")
+            return
 
     print("\n== Regenerating front-matter Table of Contents (generate_toc.py) ==")
     run([sys.executable, str(TOC_GENERATOR)])
@@ -312,6 +396,21 @@ def ensure_metadata_json() -> None:
 
     print("\n== Refreshing metadata.json (generate_metadata_json.py) ==")
     run([sys.executable, str(METADATA_GENERATOR)])
+
+
+def apply_layout_overrides_from_config() -> None:
+    ensure_build_dir()
+    try:
+        layout_overrides.apply(BUILD_DIR)
+    except Exception as exc:
+        print(f"-- Warning: Unable to write layout overrides: {exc}")
+
+
+def maybe_sync_vscode_tasks() -> None:
+    try:
+        vscode_tasks.sync()
+    except Exception as exc:
+        print(f"-- Warning: Unable to refresh VS Code tasks: {exc}")
 
 
 def slugify_article_basename(label: str | None) -> str:
@@ -565,6 +664,31 @@ def append_metadata_files(cmd: list[str]) -> None:
             cmd += ["--metadata-file", str(meta)]
 
 
+def iter_css_files() -> list[Path]:
+    files = list(BASE_CSS_FILES)
+    if CSS_OVERRIDE.exists():
+        files.append(CSS_OVERRIDE)
+    return files
+
+
+def append_catalog_collections_filter(cmd: list[str]) -> None:
+    """Attach the catalog collections Lua filter when available."""
+
+    if not PREPROCESS_ACTIVE:
+        return
+
+    if not CATALOG_COLLECTIONS_FILTER.exists():
+        return
+
+    config_path = preprocess_config.resolve_config_path()
+    if not config_path.exists():
+        print(f"-- Warning: Preprocess config not found at {config_path}; skipping catalog filter.")
+        return
+
+    cmd += ["--lua-filter", str(CATALOG_COLLECTIONS_FILTER)]
+    cmd += ["-M", f"catalog_collections.config={config_path}"]
+
+
 def enable_citations(cmd: list[str]) -> None:
     """Ensure citeproc is enabled so bibliography data is rendered."""
 
@@ -747,11 +871,387 @@ def _rewrite_epub_archive(
         shutil.move(tmp_path, source)
 
 
+def _extract_spine_hrefs(zf: zipfile.ZipFile) -> list[str]:
+    try:
+        data = zf.read("EPUB/content.opf").decode("utf-8")
+    except KeyError:
+        return []
+
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return []
+
+    ns = {"opf": "http://www.idpf.org/2007/opf"}
+    manifest: dict[str, str] = {}
+    for item in root.findall(".//opf:manifest/opf:item", ns):
+        item_id = item.attrib.get("id")
+        href = item.attrib.get("href")
+        if item_id and href:
+            manifest[item_id] = href
+
+    hrefs: list[str] = []
+    for itemref in root.findall(".//opf:spine/opf:itemref", ns):
+        idref = itemref.attrib.get("idref")
+        if not idref:
+            continue
+        href = manifest.get(idref)
+        if href:
+            hrefs.append(href)
+    return hrefs
+
+
+def _is_chapter_href(href: str) -> bool:
+    return href.startswith("text/ch")
+
+
+def _insert_before(parent: ET.Element, new_node: ET.Element, ref_node: ET.Element) -> None:
+    children = list(parent)
+    try:
+        index = children.index(ref_node)
+    except ValueError:
+        parent.append(new_node)
+        return
+    parent.insert(index, new_node)
+
+
+def _heading_level_from_tag(tag: str) -> int | None:
+    local = tag
+    if tag.startswith(XHTML):
+        local = tag[len(XHTML) :]
+    if not local.startswith("h"):
+        return None
+    suffix = local[1:]
+    if not suffix.isdigit():
+        return None
+    level = int(suffix)
+    if 1 <= level <= 6:
+        return level
+    return None
+
+
+def _resolve_heading_identifier(
+    elem: ET.Element,
+    parent_map: dict[ET.Element, ET.Element],
+) -> str | None:
+    ident = elem.get("id")
+    if ident:
+        return ident
+
+    parent = parent_map.get(elem)
+    visited = 0
+    while parent is not None and visited < 6:
+        ident = parent.get("id")
+        if ident:
+            return ident
+        parent = parent_map.get(parent)
+        visited += 1
+    return None
+
+
+def _populate_anchor_from_heading(anchor: ET.Element, heading: HeadingContent | NavHeading) -> None:
+    lead_text = getattr(heading, "lead_text", "") or ""
+    if lead_text:
+        anchor.text = lead_text
+    for child in getattr(heading, "children", []):
+        anchor.append(copy.deepcopy(child))
+    has_children = len(list(anchor)) > 0
+    if (anchor.text is None or anchor.text.strip() == "") and not has_children and getattr(heading, "plain_text", ""):
+        anchor.text = heading.plain_text
+
+
+def _append_nav_children(parent_li: ET.Element, base_href: str, nodes: list[NavHeading]) -> None:
+    if not nodes:
+        return
+
+    child_ol = ET.Element(f"{XHTML}ol", {"class": "toc"})
+    for node in nodes:
+        child_li = ET.Element(f"{XHTML}li")
+        anchor = ET.SubElement(child_li, f"{XHTML}a", {"href": f"{base_href}#{node.identifier}"})
+        _populate_anchor_from_heading(anchor, node)
+        if node.subsections:
+            _append_nav_children(child_li, base_href, node.subsections)
+        child_ol.append(child_li)
+
+    parent_li.append(child_ol)
+
+
+def _serialize_nav_tree(root: ET.Element) -> str:
+    return "\n".join([XML_DECL, NAV_DOCTYPE, ET.tostring(root, encoding="unicode", method="xml")])
+
+
+def _serialize_xml_tree(root: ET.Element) -> str:
+    return "\n".join([XML_DECL, ET.tostring(root, encoding="unicode", method="xml")])
+
+
+def _load_heading_content(
+    zf: zipfile.ZipFile,
+    href: str,
+    cache: dict[str, HeadingContent | None],
+) -> HeadingContent | None:
+    if href in cache:
+        return cache[href]
+
+    try:
+        data = zf.read(f"EPUB/{href}").decode("utf-8")
+    except KeyError:
+        cache[href] = None
+        return None
+
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        cache[href] = None
+        return None
+
+    ET.register_namespace("", XHTML_NS)
+    ET.register_namespace("epub", EPUB_NS)
+    parent_map: dict[ET.Element, ET.Element] = {
+        child: parent
+        for parent in root.iter()
+        for child in list(parent)
+    }
+    main_heading: HeadingContent | None = None
+    subheadings: list[NavHeading] = []
+    stack: list[tuple[int, list[NavHeading]]] = [(1, subheadings)]
+
+    for elem in root.iter():
+        level = _heading_level_from_tag(elem.tag)
+        if level is None:
+            continue
+
+        identifier = _resolve_heading_identifier(elem, parent_map)
+        lead_text = elem.text or ""
+        child_nodes = [copy.deepcopy(child) for child in elem]
+        plain_text = "".join(elem.itertext()).strip() or identifier or Path(href).stem
+
+        if level == 1:
+            if main_heading is None:
+                main_heading = HeadingContent(
+                    lead_text=lead_text,
+                    children=child_nodes,
+                    plain_text=plain_text,
+                    subheadings=subheadings,
+                )
+            stack = [(1, subheadings)]
+            continue
+
+        if level < 2 or level > TOC_MAX_DEPTH:
+            continue
+        if not identifier:
+            continue
+
+        nav_heading = NavHeading(
+            level=level,
+            identifier=identifier,
+            lead_text=lead_text,
+            children=child_nodes,
+            plain_text=plain_text,
+            subsections=[],
+        )
+
+        while stack and level <= stack[-1][0]:
+            stack.pop()
+        if not stack:
+            stack = [(1, subheadings)]
+
+        stack[-1][1].append(nav_heading)
+        stack.append((level, nav_heading.subsections))
+
+    if main_heading is None:
+        main_heading = HeadingContent(
+            lead_text="",
+            children=[],
+            plain_text=Path(href).stem,
+            subheadings=subheadings,
+        )
+
+    cache[href] = main_heading
+    return main_heading
+
+
+def _format_missing_targets(hrefs: list[str]) -> str:
+    if len(hrefs) <= 3:
+        return ", ".join(hrefs)
+    preview = ", ".join(hrefs[:3])
+    return f"{preview}..."
+
+
+def _augment_nav_with_missing_chapters(
+    nav_text: str,
+    zf: zipfile.ZipFile,
+    spine_hrefs: list[str],
+    heading_cache: dict[str, HeadingContent | None],
+) -> tuple[str, int]:
+    if not nav_text:
+        return nav_text, 0
+
+    ET.register_namespace("", XHTML_NS)
+    ET.register_namespace("epub", EPUB_NS)
+    try:
+        root = ET.fromstring(nav_text)
+    except ET.ParseError:
+        return nav_text, 0
+
+    nav_elem = root.find(f".//{XHTML}nav[@{EPUB}type='toc']")
+    if nav_elem is None:
+        return nav_text, 0
+
+    ol = nav_elem.find(f"{XHTML}ol")
+    if ol is None:
+        return nav_text, 0
+
+    existing: dict[str, ET.Element] = {}
+    max_id = 0
+    for li in list(ol):
+        anchor = li.find(f"{XHTML}a")
+        if anchor is None:
+            continue
+        href = anchor.get("href")
+        if href:
+            existing[href] = li
+        ident = li.get("id")
+        if ident:
+            match = re.search(r"(\d+)$", ident)
+            if match:
+                max_id = max(max_id, int(match.group(1)))
+
+    present = set(existing.keys())
+    missing_titles: list[str] = []
+    added = 0
+    chapter_hrefs = [href for href in spine_hrefs if _is_chapter_href(href)]
+
+    for idx, href in enumerate(chapter_hrefs):
+        if href in present:
+            continue
+        heading = _load_heading_content(zf, href, heading_cache)
+        if not heading:
+            missing_titles.append(href)
+            continue
+
+        max_id += 1
+        li = ET.Element(f"{XHTML}li", {"id": f"toc-li-{max_id}"})
+        anchor = ET.SubElement(li, f"{XHTML}a", {"href": href})
+        _populate_anchor_from_heading(anchor, heading)
+        _append_nav_children(li, href, heading.subheadings)
+
+        next_href = None
+        for candidate in chapter_hrefs[idx + 1:]:
+            if candidate in present:
+                next_href = candidate
+                break
+
+        if next_href:
+            _insert_before(ol, li, existing[next_href])
+        else:
+            ol.append(li)
+
+        existing[href] = li
+        present.add(href)
+        added += 1
+
+    if missing_titles:
+        print(
+            f"-- Warning: unable to infer nav titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
+        )
+
+    if added == 0:
+        return nav_text, 0
+
+    return _serialize_nav_tree(root), added
+
+
+def _augment_ncx_with_missing_chapters(
+    toc_text: str,
+    zf: zipfile.ZipFile,
+    spine_hrefs: list[str],
+    heading_cache: dict[str, HeadingContent | None],
+) -> tuple[str, int]:
+    if not toc_text:
+        return toc_text, 0
+
+    ET.register_namespace("", NCX_NS)
+    try:
+        root = ET.fromstring(toc_text)
+    except ET.ParseError:
+        return toc_text, 0
+
+    nav_map = root.find(f"{NCX}navMap")
+    if nav_map is None:
+        return toc_text, 0
+
+    existing: dict[str, ET.Element] = {}
+    max_id = 0
+    for nav_point in list(nav_map):
+        content = nav_point.find(f"{NCX}content")
+        if content is None:
+            continue
+        src = content.get("src")
+        if src:
+            existing[src] = nav_point
+        ident = nav_point.get("id")
+        if ident:
+            match = re.search(r"(\d+)$", ident)
+            if match:
+                max_id = max(max_id, int(match.group(1)))
+
+    present = set(existing.keys())
+    added = 0
+    missing_titles: list[str] = []
+    chapter_hrefs = [href for href in spine_hrefs if _is_chapter_href(href)]
+
+    for idx, href in enumerate(chapter_hrefs):
+        if href in present:
+            continue
+        heading = _load_heading_content(zf, href, heading_cache)
+        if not heading:
+            missing_titles.append(href)
+            continue
+
+        max_id += 1
+        nav_point = ET.Element(f"{NCX}navPoint", {"id": f"navPoint-{max_id}"})
+        nav_label = ET.SubElement(nav_point, f"{NCX}navLabel")
+        text_elem = ET.SubElement(nav_label, f"{NCX}text")
+        text_elem.text = heading.plain_text
+        ET.SubElement(nav_point, f"{NCX}content", {"src": href})
+
+        next_href = None
+        for candidate in chapter_hrefs[idx + 1:]:
+            if candidate in present:
+                next_href = candidate
+                break
+
+        if next_href:
+            _insert_before(nav_map, nav_point, existing[next_href])
+        else:
+            nav_map.append(nav_point)
+
+        existing[href] = nav_point
+        present.add(href)
+        added += 1
+
+    if missing_titles:
+        print(
+            f"-- Warning: unable to infer NCX titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
+        )
+
+    if added == 0:
+        return toc_text, 0
+
+    return _serialize_xml_tree(root), added
+
+
 def repair_epub_navigation(epub_path: Path) -> None:
     """Ensure nav.xhtml and toc.ncx never reference fragment-only paths."""
 
     if not epub_path.exists():
         return
+
+    nav_updated: str | None = None
+    toc_updated: str | None = None
+    nav_fixes = toc_fixes = 0
+    nav_added = toc_added = 0
+    missing_ids: set[str] = set()
 
     try:
         with zipfile.ZipFile(epub_path, "r") as zf:
@@ -769,24 +1269,36 @@ def repair_epub_navigation(epub_path: Path) -> None:
                 return
 
             id_targets = _collect_epub_id_targets(zf)
+            spine_hrefs = _extract_spine_hrefs(zf)
+            heading_cache: dict[str, HeadingContent | None] = {}
+
+            nav_updated = nav_raw
+            toc_updated = toc_raw
+
+            if nav_raw:
+                nav_updated, nav_fixes, missing = _rewrite_internal_refs(nav_raw, NAV_LINK_PATTERN, id_targets)
+                missing_ids.update(missing)
+                nav_updated, nav_added = _augment_nav_with_missing_chapters(
+                    nav_updated,
+                    zf,
+                    spine_hrefs,
+                    heading_cache,
+                )
+
+            if toc_raw:
+                toc_updated, toc_fixes, missing = _rewrite_internal_refs(toc_raw, NCX_LINK_PATTERN, id_targets)
+                missing_ids.update(missing)
+                toc_updated, toc_added = _augment_ncx_with_missing_chapters(
+                    toc_updated,
+                    zf,
+                    spine_hrefs,
+                    heading_cache,
+                )
     except zipfile.BadZipFile:
         print("-- Unable to inspect EPUB archive; skipping nav/toc repair.")
         return
 
-    nav_updated = nav_raw
-    toc_updated = toc_raw
-    nav_fixes = toc_fixes = 0
-    missing_ids: set[str] = set()
-
-    if nav_raw:
-        nav_updated, nav_fixes, missing = _rewrite_internal_refs(nav_raw, NAV_LINK_PATTERN, id_targets)
-        missing_ids.update(missing)
-
-    if toc_raw:
-        toc_updated, toc_fixes, missing = _rewrite_internal_refs(toc_raw, NCX_LINK_PATTERN, id_targets)
-        missing_ids.update(missing)
-
-    if nav_fixes == 0 and toc_fixes == 0:
+    if (nav_fixes + toc_fixes + nav_added + toc_added) == 0:
         if missing_ids:
             print(f"-- Warning: {len(missing_ids)} nav/toc ids missing chapter targets: {sorted(missing_ids)[:5]}...")
         return
@@ -794,8 +1306,12 @@ def repair_epub_navigation(epub_path: Path) -> None:
     print("\n== Repairing EPUB navigation targets ==")
     if nav_fixes:
         print(f"-- Updated {nav_fixes} entries in nav.xhtml")
+    if nav_added:
+        print(f"-- Added {nav_added} missing chapters to nav.xhtml")
     if toc_fixes:
         print(f"-- Updated {toc_fixes} entries in toc.ncx")
+    if toc_added:
+        print(f"-- Added {toc_added} missing chapters to toc.ncx")
     if missing_ids:
         print(f"-- Warning: unable to resolve targets for {len(missing_ids)} ids: {sorted(missing_ids)[:5]}...")
 
@@ -845,9 +1361,11 @@ def build_epub(use_filter: bool = True) -> None:
 
     cmd += ["--top-level-division=chapter"]
 
-    for css in CSS_FILES:
+    for css in iter_css_files():
         if css.exists():
             cmd += ["--css", str(css)]
+
+    append_catalog_collections_filter(cmd)
 
     # EPUB only uses the main Lua filter
     if use_filter and IASP_FILTER.exists():
@@ -883,6 +1401,8 @@ def build_office_format(
 
     if writer:
         cmd += ["-t", writer]
+
+    append_catalog_collections_filter(cmd)
 
     if use_filter and IASP_FILTER.exists():
         cmd += ["--lua-filter", str(IASP_FILTER)]
@@ -930,7 +1450,12 @@ def make_pdf_base_cmd(
         "--pdf-engine=xelatex",  # ignored when -t latex, fine to leave
     ]
 
-    headers = [BLOCKQUOTE_STYLE, PDF_HEADER]
+    headers = [BLOCKQUOTE_STYLE]
+
+    if PDF_LAYOUT_OVERRIDES.exists():
+        headers.append(PDF_LAYOUT_OVERRIDES)
+
+    headers.append(PDF_HEADER)
 
     if include_sentinel:
         headers.append(SENTINEL_HEADER)
@@ -938,6 +1463,8 @@ def make_pdf_base_cmd(
     for header in headers:
         if header.exists():
             cmd += ["--include-in-header", str(header)]
+
+    append_catalog_collections_filter(cmd)
 
     if use_filter and IASP_FILTER.exists():
         # Single Lua filter handles chapters, appendices, sidebars, epigraphs
@@ -1084,6 +1611,8 @@ def build_article_pdf(
         if header.exists():
             cmd += ["--include-in-header", str(header)]
 
+    append_catalog_collections_filter(cmd)
+
     if use_filter and IASP_FILTER.exists():
         cmd += ["--lua-filter", str(IASP_FILTER)]
 
@@ -1175,6 +1704,8 @@ def build_single_markdown(
     for header in (BLOCKQUOTE_STYLE, PDF_HEADER):
         if header.exists():
             base_cmd += ["--include-in-header", str(header)]
+
+    append_catalog_collections_filter(base_cmd)
 
     if use_filter and IASP_FILTER.exists():
         base_cmd += ["--lua-filter", str(IASP_FILTER)]
@@ -1352,6 +1883,8 @@ def main() -> None:
         )
         sys.exit(1)
 
+    maybe_sync_vscode_tasks()
+    apply_layout_overrides_from_config()
     run_pre_build_hooks()
     update_build_metadata(build_stage)
     action()

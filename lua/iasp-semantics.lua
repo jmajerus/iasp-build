@@ -1691,6 +1691,15 @@ local function handle_div(div)
 
   div.attributes = div.attributes or {}
 
+  local format_hint = (FORMAT or ""):lower()
+  local manual_page_break = has_class(div, "page-break") or has_class(div, "pagebreak")
+  if manual_page_break then
+    local breaker = chapter_page_break_block(format_hint)
+    if breaker then
+      return { breaker }
+    end
+  end
+
   local has_sidebar_semantics = has_epub_type(div.attributes, "aside") or has_epub_type(div.attributes, "sidebar")
   local has_inline_hint = has_epub_type(div.attributes, "sidebar-inline") or has_class(div, "sidebar-inline")
   local has_block_hint = has_class(div, "sidebar-block") or div.attributes["data-sidebar"] == "block"

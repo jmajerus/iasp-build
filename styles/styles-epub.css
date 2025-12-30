@@ -78,3 +78,15 @@ pre {
 }
 
 /* Additional semantics (parts, sidebars, etc.) are defined in styles-shared.css */
+
+/* Manual page breaks (use with `:::.page-break`) */
+.page-break,
+.pagebreak {
+  display: block;
+  break-before: page !important;
+  page-break-before: always !important;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  height: 0;
+}
