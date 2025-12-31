@@ -1036,6 +1036,22 @@ local function normalize_newlines(text)
   return result
 end
 
+local function include_error_blocks(target, reason)
+  local message
+  if target and target ~= "" then
+    message = "[Err: The file '" .. target .. "' could not be inserted here]"
+  else
+    message = "[Err: An include directive could not be expanded here]"
+  end
+
+  if reason and reason ~= "" then
+    message = message .. " (" .. reason .. ")"
+  end
+
+  message = "(" .. message .. ".)"
+  return { pandoc.Para({ pandoc.Str(message) }) }
+end
+
 local function slugify_identifier_source(raw)
   if not raw or raw == "" then
     return nil
@@ -1308,8 +1324,6 @@ local function expand_include_div(div)
   local sequence_specs = nil
   if sequence_attr and sequence_attr ~= "" then
     sequence_specs = parse_target_sequence(sequence_attr)
-  elseif target and target:find(",") then
-    sequence_specs = parse_target_sequence(target)
   end
 
   local function append_sequence_specs(spec_list)
@@ -1336,7 +1350,7 @@ local function expand_include_div(div)
 
   if (not target or target == "") and (not sequence_specs or #sequence_specs == 0) then
     io.stderr:write("[include] missing path attribute on include block\n")
-    return { pandoc.Para({ pandoc.Str("[include missing path]") }) }
+    return include_error_blocks(nil, "missing path attribute")
   end
 
   local resolved = nil
@@ -1344,7 +1358,7 @@ local function expand_include_div(div)
     resolved = resolve_include_path(target)
     if not resolved then
       io.stderr:write("[include] unable to resolve path for " .. target .. "\n")
-      return { pandoc.Para({ pandoc.Str("[include path error]") }) }
+      return include_error_blocks(target, "path not found")
     end
   end
 
@@ -1428,13 +1442,14 @@ local function expand_include_div(div)
       end
     end
     if #include_targets == 0 then
-      return { pandoc.Para({ pandoc.Str("[include path error]") }) }
+      local unresolved = sequence_specs and sequence_specs[1] or first_target_spec or target
+      return include_error_blocks(unresolved, "no readable targets")
     end
   elseif is_dir then
     local files = list_markdown_files(resolved:gsub("/$", ""))
     if #files == 0 then
       io.stderr:write("[include] no markdown files found in directory " .. resolved .. "\n")
-      return { pandoc.Para({ pandoc.Str("[include empty directory]") }) }
+      return include_error_blocks(target or resolved, "directory has no markdown files")
     end
     include_targets = files
   else
@@ -1489,15 +1504,19 @@ local function expand_include_div(div)
   for idx, include_path in ipairs(include_targets) do
     if include_stack[include_path] then
       io.stderr:write("[include] recursive include detected for " .. include_path .. "\n")
-      table.insert(
-        assembled,
-        pandoc.Para({ pandoc.Str("[include recursion skipped: " .. include_path .. "]") })
-      )
+      local recursion_blocks = include_error_blocks(include_path, "recursive reference")
+      for _, block in ipairs(recursion_blocks) do
+        table.insert(assembled, block)
+      end
       goto continue
     end
 
     local contents = read_include_file(include_path)
     if not contents then
+      local failure_blocks = include_error_blocks(include_path, "file could not be read")
+      for _, block in ipairs(failure_blocks) do
+        table.insert(assembled, block)
+      end
       goto continue
     end
 
