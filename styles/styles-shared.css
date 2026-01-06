@@ -110,7 +110,8 @@ h3[epub|type~="subchapter"] {
   letter-spacing: 0.03em;
 }
 
-[epub|type~="aside"] .sidebar-badge {
+[epub|type~="aside"] .sidebar-badge,
+[epub|type~="sidebar-inline"] .sidebar-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
@@ -138,6 +139,12 @@ h3[epub|type~="subchapter"] {
   font-size: 0.95em;
   margin-right: 0.35em;
   display: inline-block;
+}
+
+[epub|type~="sidebar-inline"] .sidebar-inline-glyph--block {
+  display: inline-flex;
+  margin-right: 0;
+  margin-bottom: 0.35em;
 }
 
 [epub|type~="sidebar-inline"] {

@@ -460,13 +460,23 @@ local function section_heading_glyph_inlines(glyph_text, variant)
   return { glyph_span, pandoc.Space() }
 end
 
-local function sidebar_inline_marker_inlines()
+local function sidebar_glyph_marker_inlines()
   if FORMAT:match("latex") then
     return { pandoc.RawInline("latex", "\\sidebarinlineglyph{}") }
   end
 
   local span = span_with_classes({ pandoc.Str(SIDEBAR_GLYPH_UTF8) }, { "sidebar-inline-glyph" })
   return { span, pandoc.Space() }
+end
+
+local function sidebar_glyph_marker_block()
+  if FORMAT:match("latex") then
+    return pandoc.RawBlock("latex", "\\sidebarinlineglyphline\n")
+  end
+
+  local classes = { "sidebar-inline-glyph", "sidebar-inline-glyph--block" }
+  local span = span_with_classes({ pandoc.Str(SIDEBAR_GLYPH_UTF8) }, classes)
+  return pandoc.Para({ span })
 end
 
 local function sidebar_badge_blocks()
@@ -629,14 +639,99 @@ local function insert_sidebar_badge(div)
   return true
 end
 
-local function inject_sidebar_inline_marker(div)
+local function sidebar_display_mode(div, is_sidebar_block)
+  if not div then
+    return is_sidebar_block and "badge" or "glyph"
+  end
+
+  local forced = nil
+
+  if div.classes then
+    if has_class(div, "sidebar-badge") then
+      forced = "badge"
+    elseif has_class(div, "sidebar-glyph") then
+      forced = "glyph"
+    end
+  end
+
+  if not forced and div.attributes then
+    local attr = div.attributes["data-marker"]
+    if attr and attr ~= "" then
+      local normalized = attr:lower()
+      if normalized == "badge" or normalized == "glyph" then
+        forced = normalized
+      end
+    end
+  end
+
+  if not forced then
+    forced = is_sidebar_block and "badge" or "glyph"
+  end
+
+  return forced
+end
+
+local function wants_sidebar_glyph_block_marker(div)
+  if not div then
+    return false
+  end
+
+  local block_class_hints = {
+    ["glyph-top"] = true,
+    ["glyphtop"] = true,
+    ["glyph-line"] = true,
+    ["glyphline"] = true,
+    ["glyph-block"] = true,
+    ["glyphblock"] = true,
+    ["glyph-stack"] = true,
+    ["glyphstack"] = true
+  }
+
+  if div.classes then
+    for _, cls in ipairs(div.classes) do
+      if block_class_hints[cls] then
+        return true
+      end
+    end
+  end
+
+  if div.attributes then
+    local glyph_mode = div.attributes["data-glyph"]
+    if glyph_mode then
+      local normalized = glyph_mode:lower()
+      local attr_hints = {
+        block = true,
+        stacked = true,
+        stack = true,
+        line = true,
+        top = true
+      }
+      if attr_hints[normalized] then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
+local function inject_sidebar_glyph_marker(div, mode)
   if not div or not div.content then
     return false
   end
 
+  if mode == "block" then
+    local glyph_block = sidebar_glyph_marker_block()
+    if not glyph_block then
+      return false
+    end
+    table.insert(div.content, 1, glyph_block)
+    return true
+  end
+
   for _, block in ipairs(div.content) do
     if block.t == "Para" or block.t == "Plain" then
-      local marker_inlines = sidebar_inline_marker_inlines()
+      local marker_inlines = sidebar_glyph_marker_inlines()
       for idx = #marker_inlines, 1, -1 do
         table.insert(block.content, 1, marker_inlines[idx])
       end
@@ -1730,21 +1825,33 @@ local function handle_div(div)
 
   local is_sidebar_block = has_sidebar_semantics and not is_sidebar_inline
 
+  local handles_sidebar_content = is_sidebar_inline or is_sidebar_block
   local heading_decorated = false
-  if is_sidebar_inline then
-    if decorate_sidebar_heading(div.content) then
-      mutated = true
-      heading_decorated = true
-    end
-  end
+  local glyph_marker_mode = "inline"
 
-  if is_sidebar_block then
-    if insert_sidebar_badge(div) then
-      mutated = true
+  if handles_sidebar_content then
+    local display_mode = sidebar_display_mode(div, is_sidebar_block)
+    local wants_badge = display_mode == "badge"
+    local wants_glyph = display_mode ~= "badge"
+
+    if wants_glyph then
+      if decorate_sidebar_heading(div.content) then
+        mutated = true
+        heading_decorated = true
+      end
+      if wants_sidebar_glyph_block_marker(div) then
+        glyph_marker_mode = "block"
+      end
     end
-  elseif is_sidebar_inline and not heading_decorated then
-    if inject_sidebar_inline_marker(div) then
-      mutated = true
+
+    if wants_badge then
+      if insert_sidebar_badge(div) then
+        mutated = true
+      end
+    elseif wants_glyph and not heading_decorated then
+      if inject_sidebar_glyph_marker(div, glyph_marker_mode) then
+        mutated = true
+      end
     end
   end
 
