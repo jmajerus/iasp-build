@@ -72,6 +72,50 @@ CLOSING = ":::"
 OPEN_RE = re.compile(r'^:::\s*(\{[^}]+\}|[.#A-Za-z0-9_-]+)\s*$')
 
 
+def _extract_wrapper_tokens(wrapper_line: str) -> list[str]:
+    stripped = wrapper_line.strip()
+    if not stripped.startswith(":::"):
+        return []
+
+    body = stripped[3:].strip()
+    if not body:
+        return []
+
+    if body.startswith("{") and body.endswith("}"):
+        body = body[1:-1].strip()
+
+    if not body:
+        return []
+
+    return body.split()
+
+
+def _extract_class_tokens(wrapper_line: str) -> list[str]:
+    return [token for token in _extract_wrapper_tokens(wrapper_line) if token.startswith(".")]
+
+
+def _format_wrapper_line(tokens: list[str]) -> str:
+    if not tokens:
+        return ":::"
+    return f"::: {{{' '.join(tokens)}}}"
+
+
+def _dedupe_preserve_order(tokens: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for token in tokens:
+        if token not in seen:
+            ordered.append(token)
+            seen.add(token)
+    return ordered
+
+
+STANDARD_CLASS_TOKENS: set[str] = set()
+for wrapper in DIR_TAGS.values():
+    for token in _extract_class_tokens(wrapper):
+        STANDARD_CLASS_TOKENS.add(token)
+
+
 # -------- HELPERS ----------------------------------------------------------
 
 def first_footnote_index(lines):
@@ -118,6 +162,11 @@ def wrap_file(path: Path, desired_open: str) -> None:
 
     desired_open_stripped = desired_open.strip()
     closing_stripped = CLOSING
+    desired_tokens = _extract_wrapper_tokens(desired_open_stripped)
+    desired_classes = [token for token in desired_tokens if token.startswith('.')]
+    desired_nonclass = [token for token in desired_tokens if not token.startswith('.')]
+    desired_class_set = set(desired_classes)
+    wrapper_status = "unchanged"
 
     # File is empty / whitespace only
     if first is None:
@@ -131,17 +180,36 @@ def wrap_file(path: Path, desired_open: str) -> None:
     m = OPEN_RE.match(existing_first)
 
     if m:
-        # There is an existing semantic wrapper
-        if existing_first == desired_open_stripped:
-            # Already correct: just ensure closing tag
+        existing_tokens = _extract_wrapper_tokens(existing_first)
+        existing_classes = [token for token in existing_tokens if token.startswith('.')]
+        existing_nonclass = [token for token in existing_tokens if not token.startswith('.')]
+        existing_class_set = set(existing_classes)
+        has_all_desired = bool(desired_classes) and desired_class_set.issubset(existing_class_set)
+
+        if existing_first == desired_open_stripped or has_all_desired:
+            # Already correct or already contains the desired semantic classes.
             pass
         else:
-            # Wrong intent tag: replace this line with the desired one
-            lines[first] = desired_open_stripped + "\n"
-            print(f"** Updated wrapper type for: {path}")
+            wrapper_status = "updated"
+            preserved_classes: list[str] = []
+            for cls in desired_classes:
+                if cls not in preserved_classes:
+                    preserved_classes.append(cls)
+            for cls in existing_classes:
+                if cls in desired_class_set:
+                    continue
+                if cls in STANDARD_CLASS_TOKENS:
+                    continue
+                if cls not in preserved_classes:
+                    preserved_classes.append(cls)
+
+            nonclass_tokens = _dedupe_preserve_order(desired_nonclass + existing_nonclass)
+            new_tokens = preserved_classes + nonclass_tokens
+            lines[first] = _format_wrapper_line(new_tokens) + "\n"
     else:
         # No wrapper: we need to insert one before first non-empty line
         lines.insert(first, desired_open_stripped + "\n")
+        wrapper_status = "updated"
         # first/last indices are now off, but we only care about closing next
 
     footnote_idx = first_footnote_index(lines)
@@ -175,7 +243,7 @@ def wrap_file(path: Path, desired_open: str) -> None:
         tmp_path = Path(tmp.name)
 
     shutil.move(str(tmp_path), path)
-    if existing_first == desired_open_stripped:
+    if wrapper_status == "unchanged":
         print(f"-- Already correct: {path}")
     else:
         print(f"++ Updated: {path}")

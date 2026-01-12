@@ -618,6 +618,8 @@ def update_build_metadata(build_stage: str | None = None) -> None:
         "build-stage": normalized_stage,
         "draft-build": normalized_stage == "draft",
         "final-build": normalized_stage != "draft",
+        "layout-named-block-badges": _config_bool(LAYOUT_SETTINGS.get("named_block_badges"), False),
+        "layout-named-note-badges": _config_bool(LAYOUT_SETTINGS.get("named_note_badges"), False),
     }
 
     if PROFILE:

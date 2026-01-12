@@ -19,7 +19,11 @@ local build_stage_cache = nil
 local article_mode_cache = nil
 local frontmatter_enabled_cache = nil
 local backmatter_enabled_cache = nil
+local named_block_badges_enabled_cache = nil
+local named_note_badges_enabled_cache = nil
 local identifier_registry = {}
+local note_variant
+local note_variant_badge_label
 
 local build_wrapper_map
 
@@ -30,6 +34,8 @@ local function capture_document_meta(meta)
   article_mode_cache = nil
   frontmatter_enabled_cache = nil
   backmatter_enabled_cache = nil
+  named_block_badges_enabled_cache = nil
+  named_note_badges_enabled_cache = nil
   identifier_registry = {}
   if meta then
     for key, value in pairs(meta) do
@@ -128,6 +134,44 @@ local function truthy_string(value)
   end
   local lowered = tostring(value):lower()
   return lowered == "1" or lowered == "true" or lowered == "yes" or lowered == "on"
+end
+
+local function named_block_badges_enabled()
+  if named_block_badges_enabled_cache ~= nil then
+    return named_block_badges_enabled_cache
+  end
+
+  local raw = meta_value("layout-named-block-badges")
+  if not raw or raw == "" then
+    raw = meta_value("named-block-badges") or meta_value("named_block_badges")
+  end
+
+  if not raw or raw == "" then
+    named_block_badges_enabled_cache = false
+    return named_block_badges_enabled_cache
+  end
+
+  named_block_badges_enabled_cache = truthy_string(raw)
+  return named_block_badges_enabled_cache
+end
+
+local function named_note_badges_enabled()
+  if named_note_badges_enabled_cache ~= nil then
+    return named_note_badges_enabled_cache
+  end
+
+  local raw = meta_value("layout-named-note-badges")
+  if not raw or raw == "" then
+    raw = meta_value("named-note-badges") or meta_value("named_note_badges")
+  end
+
+  if not raw or raw == "" then
+    named_note_badges_enabled_cache = false
+    return named_note_badges_enabled_cache
+  end
+
+  named_note_badges_enabled_cache = truthy_string(raw)
+  return named_note_badges_enabled_cache
 end
 
 local function article_build_enabled()
@@ -380,6 +424,33 @@ local SIDEBAR_BADGE_LABEL = "SIDEBAR"
 local SECTION_HEADING_GLYPH_CLASS = "section-heading-glyph"
 local COLLECTION_HEADING_GLYPH_CLASS = "collection-heading-glyph"
 local CATALOG_COLLECTION_HEADING_CLASS = "catalog-collection-heading"
+local NAMED_BLOCK_BADGE_LABELS = {
+  note = "NOTE",
+  callout = "CALLOUT",
+  example = "EXAMPLE",
+  definition = "DEFINITION",
+  aside = "SIDEBAR",
+  bridge = "BRIDGE"
+}
+local BADGE_DISABLE_CLASS_HINTS = {
+  nobadge = true,
+  ["no-badge"] = true,
+  badgeoff = true,
+  ["badge-off"] = true,
+  nobadges = true
+}
+local LOCAL_GLYPH_CLASS_HINTS = {
+  ["sidebar-glyph"] = true,
+  glyph = true,
+  ["glyph-top"] = true,
+  glyphtop = true,
+  ["glyph-line"] = true,
+  glyphline = true,
+  ["glyph-block"] = true,
+  glyphblock = true,
+  ["glyph-stack"] = true,
+  glyphstack = true
+}
 
 local function replace_meta_placeholders(str)
   if not str or str.t ~= "Str" then
@@ -488,6 +559,220 @@ local function sidebar_badge_blocks()
   local label_span = span_with_classes({ pandoc.Str(SIDEBAR_BADGE_LABEL) }, { "sidebar-badge__label" })
   local badge_span = span_with_classes({ glyph_span, pandoc.Space(), label_span }, { "sidebar-badge" })
   return { pandoc.Para({ badge_span }) }
+end
+
+-- Generic box badge support -------------------------------------------------
+local function compute_box_badge_label(div)
+  if not div then return nil end
+  if div.attributes then
+    local custom = div.attributes["data-marker-label"]
+    if custom and custom ~= "" then
+      return custom
+    end
+  end
+
+  local variant_label = note_variant_badge_label(div)
+
+  if div.attributes and div.attributes["epub:type"] then
+    for token in div.attributes["epub:type"]:gmatch("%S+") do
+      local lower = token:lower()
+      local mapped = NAMED_BLOCK_BADGE_LABELS[lower]
+      if mapped then
+        if lower == "note" and variant_label then
+          return variant_label
+        end
+        return mapped
+      end
+    end
+  end
+
+  if variant_label then
+    return variant_label
+  end
+
+  if div.classes and #div.classes > 0 then
+    return (div.classes[1] or ""):upper()
+  end
+
+  return nil
+end
+
+local function has_badge_disable_hint(div)
+  if not div or not div.classes then
+    return false
+  end
+  for _, cls in ipairs(div.classes) do
+    if BADGE_DISABLE_CLASS_HINTS[cls] then
+      return true
+    end
+  end
+  return false
+end
+
+local function div_has_named_block_semantics(div)
+  if not div or not div.attributes then
+    return false
+  end
+  local types = div.attributes["epub:type"]
+  if not types or types == "" then
+    return false
+  end
+  for token in types:gmatch("%S+") do
+    local lowered = token:lower()
+    if lowered == "note" then
+      if named_note_badges_enabled() and (not note_variant or not note_variant(div)) then
+        return true
+      end
+    elseif NAMED_BLOCK_BADGE_LABELS[lowered] then
+      return true
+    end
+  end
+  return false
+end
+
+local function div_has_note_semantics(div)
+  if not div then
+    return false
+  end
+  if div.attributes and has_epub_type(div.attributes, "note") then
+    return true
+  end
+  if div.classes then
+    for _, cls in ipairs(div.classes) do
+      if cls:lower() == "note" then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+note_variant_badge_label = function(div)
+  if not note_variant or not div_has_note_semantics(div) then
+    return nil
+  end
+  local variant = note_variant(div)
+  if not variant or variant == "" then
+    return nil
+  end
+  local label = variant:gsub("%-", " ")
+  return label:upper()
+end
+
+local function box_badge_blocks(label)
+  if FORMAT:match("latex") then
+    return { pandoc.RawBlock("latex", "\\boxbadge{" .. latex_escape_argument(label) .. "}\n") }
+  end
+
+  local label_span = span_with_classes({ pandoc.Str(label) }, { "box-badge__label" })
+  local badge_span = span_with_classes({ label_span }, { "box-badge" })
+  return { pandoc.Para({ badge_span }) }
+end
+
+local function div_has_heading_glyph(div)
+  if not div or not div.content then
+    return false
+  end
+
+  for _, block in ipairs(div.content) do
+    if block.t == "Header" and block.content and #block.content > 0 then
+      local first = block.content[1]
+      if first then
+        if first.t == "Span" and has_class(first, SECTION_HEADING_GLYPH_CLASS) then
+          return true
+        end
+        if first.t == "RawInline" and first.format == "latex" and first.text then
+          if first.text:find("\\sectionheadingglyph") or first.text:find("\\collectionheadingglyph") then
+            return true
+          end
+        end
+      end
+      break
+    end
+  end
+
+  return false
+end
+
+local function has_local_glyph_hint(div)
+  if not div then
+    return false
+  end
+
+  if div.classes then
+    for _, cls in ipairs(div.classes) do
+      local normalized = cls and cls:lower() or nil
+      if normalized then
+        if LOCAL_GLYPH_CLASS_HINTS[normalized] then
+          return true
+        end
+        if normalized:find("glyph", 1, true) then
+          return true
+        end
+      end
+    end
+  end
+
+  if div.attributes then
+    for key, value in pairs(div.attributes) do
+      if key then
+        local lowered = key:lower()
+        if lowered:find("glyph", 1, true) then
+          return true
+        end
+      end
+      if value then
+        local as_string = tostring(value)
+        if as_string ~= "" and as_string:lower():find("glyph", 1, true) then
+          return true
+        end
+      end
+    end
+  end
+
+  if div_has_heading_glyph(div) then
+    return true
+  end
+
+  return false
+end
+
+local function wants_box_badge(div)
+  if not div then
+    return false
+  end
+
+  if div.attributes and div.attributes["data-marker"] then
+    local v = div.attributes["data-marker"]:lower()
+    if v == "badge" then
+      return true
+    elseif v == "glyph" then
+      return false
+    end
+  end
+
+  if has_class(div, "badge") then
+    return true
+  end
+
+  if has_badge_disable_hint(div) or has_local_glyph_hint(div) then
+    return false
+  end
+
+  if named_block_badges_enabled() and div_has_named_block_semantics(div) then
+    return true
+  end
+
+  return false
+end
+
+local function insert_box_badge(div, label)
+  if not div or not div.content or not label then return false end
+  local blocks = box_badge_blocks(label)
+  for idx = #blocks, 1, -1 do
+    table.insert(div.content, 1, blocks[idx])
+  end
+  return true
 end
 
 local function header_has_sidebar_glyph(header)
@@ -1691,7 +1976,7 @@ end
 local appendix_started = false
 local first_chapter_seen = false
 
-NOTE_VARIANTS = {
+local NOTE_VARIANTS = {
   "idea",
   "insight",
   "warning",
@@ -1718,7 +2003,7 @@ local function chapter_page_break_block(format_hint)
   return nil
 end
 
-local function note_variant(div)
+note_variant = function(div)
   if not div or not div.classes then
     return nil
   end
@@ -1850,6 +2135,19 @@ local function handle_div(div)
       end
     elseif wants_glyph and not heading_decorated then
       if inject_sidebar_glyph_marker(div, glyph_marker_mode) then
+        mutated = true
+      end
+    end
+  end
+
+  -- Generic badge support for any framed block: if the author adds the
+  -- `.badge` class (or `data-marker="badge"`) to a Div we inject a small
+  -- badge row whose label is derived from epub:type or classes. Sidebars
+  -- are handled above so skip them here to avoid double-insertion.
+  if wants_box_badge(div) and not handles_sidebar_content then
+    local label = compute_box_badge_label(div)
+    if label and label ~= "" then
+      if insert_box_badge(div, label) then
         mutated = true
       end
     end

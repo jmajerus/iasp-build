@@ -59,3 +59,16 @@
   }%
   \par\nointerlineskip
 }
+
+% Generic box badge fallback (used by Lua when a generic .badge is requested)
+% This macro will be overridden by specialized box includes if needed.
+\newcommand{\boxbadge}[1]{%
+  \par\nointerlineskip
+  \vspace{-0.25em}%
+  \noindent
+  \colorbox{sidebarbadgebg}{%
+    \rule{0pt}{0.9\baselineskip}%
+    \hspace{0.35em}\sffamily\footnotesize #1\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+}
