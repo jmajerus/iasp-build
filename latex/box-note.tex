@@ -6,6 +6,13 @@
 %   note.insight       (minor insight)
 %   note.insight.major (major insight)
 %   note.warning
+%   note.breadcrumb
+%   note.contrast
+%   note.navigation
+%   note.bridge
+%   note.misuse
+%   note.diagnostic
+%   note.closing
 %
 % It is built around a small presentation framework:
 %   \noteheaderinline{glyph}        – inline glyph before first sentence
@@ -32,6 +39,13 @@
 \newcommand{\glyphidea}{{\noteglyphfont 💡}}     % note.idea
 \newcommand{\glyphinsight}{{\noteglyphfont ⁂}}  % note.insight
 \newcommand{\glyphwarning}{{\noteglyphfont ※}}  % note.warning (calmer than ⚠)
+\newcommand{\glyphbreadcrumb}{{\noteglyphfont ↗}} % note.breadcrumb (navigational cue)
+\newcommand{\glyphcontrast}{{\noteglyphfont ⇆}}  % note.contrast
+\newcommand{\glyphnavigation}{{\noteglyphfont ⇢}} % note.navigation
+\newcommand{\glyphbridge}{{\noteglyphfont ⟷}}   % note.bridge
+\newcommand{\glyphmisuse}{{\noteglyphfont ✕}}    % note.misuse
+\newcommand{\glyphdiagnostic}{{\noteglyphfont 🔍}} % note.diagnostic
+\newcommand{\glyphclosing}{{\noteglyphfont ∎}}   % note.closing
 
 
 %--------------------------------------------------------------------
@@ -62,26 +76,113 @@
 % 3a. Badge strip header with neutral note color.
 % Major insight (note.insight.major): badge strip aligned to left text edge
 \newcommand{\noteheaderbadgenormal}[1]{%
+  \begingroup
   \par\nointerlineskip
   \vspace{-0.25em}% counteract the restored top padding so the badge hugs the frame
   \noindent
-  \colorbox{noteboxline!15}{%
+  \expandafter\colorbox\expandafter{\notebadgebgnormal}{%
     \rule{0pt}{.10\baselineskip}%
     \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
   }%
   \par\nointerlineskip
+  \endgroup
+}
+
+% 3c. Badge strip header with breadcrumb accent color.
+\newcommand{\noteheaderbadgebreadcrumb}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgbreadcrumb}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3d. Badge strip header with navigation accent color.
+\newcommand{\noteheaderbadgenavigation}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgnavigation}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3e. Badge strip header with bridge accent color.
+\newcommand{\noteheaderbadgebridge}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgbridge}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3f. Badge strip header with diagnostic accent color.
+\newcommand{\noteheaderbadgediagnostic}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgdiagnostic}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
 }
 
 
 % 3b. Badge strip header with warning note color.
 \newcommand{\noteheaderbadgewarning}[1]{%
+  \begingroup
   \par\nointerlineskip
   \vspace{-0.25em}
   \noindent
-  \colorbox{noteboxwarningline!15}{%
+  \expandafter\colorbox\expandafter{\notebadgebgwarning}{%
     \strut\hspace{0.25em}\raisebox{0.05em}{#1}\hspace{0.25em}%
   }%
   \par\nointerlineskip
+  \endgroup
+}
+
+% 3g. Badge strip header with misuse accent color (harsher warning tone).
+\newcommand{\noteheaderbadgemisuse}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgmisuse}{%
+    \strut\hspace{0.25em}\raisebox{0.05em}{#1}\hspace{0.25em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3h. Badge strip header with closing accent (muted gray).
+\newcommand{\noteheaderbadgeclosing}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgclosing}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
 }
 
 
@@ -114,6 +215,41 @@
   \noteheaderbadgenormal{\glyphnote}%
 }
 
+% note.breadcrumb → directional badge row
+\newcommand{\headernotebreadcrumb}{%
+  \noteheaderbadgebreadcrumb{\glyphbreadcrumb}%
+}
+
+% note.contrast → inline bidirectional arrow
+\newcommand{\headernotecontrast}{%
+  \noteheaderinline{\glyphcontrast}%
+}
+
+% note.navigation → teal navigation badge
+\newcommand{\headernotenavigation}{%
+  \noteheaderbadgenavigation{\glyphnavigation}%
+}
+
+% note.bridge → lavender badge emphasizing linkage
+\newcommand{\headernotebridge}{%
+  \noteheaderbadgebridge{\glyphbridge}%
+}
+
+% note.misuse → assertive red badge
+\newcommand{\headernotemisuse}{%
+  \noteheaderbadgemisuse{\glyphmisuse}%
+}
+
+% note.diagnostic → magnifying-glass badge
+\newcommand{\headernotediagnostic}{%
+  \noteheaderbadgediagnostic{\glyphdiagnostic}%
+}
+
+% note.closing → muted closing badge
+\newcommand{\headernoteclosing}{%
+  \noteheaderbadgeclosing{\glyphclosing}%
+}
+
 
 %--------------------------------------------------------------------
 % Backwards-compatible macros expected by iasp-semantics.lua
@@ -141,7 +277,35 @@
   \ifstrequal{#1}{warning}{%
     \headernotewarning
   }{%
-    \headernotenote
+    \ifstrequal{#1}{breadcrumb}{%
+      \headernotebreadcrumb
+    }{%
+      \ifstrequal{#1}{contrast}{%
+        \headernotecontrast
+      }{%
+        \ifstrequal{#1}{navigation}{%
+          \headernotenavigation
+        }{%
+          \ifstrequal{#1}{bridge}{%
+            \headernotebridge
+          }{%
+            \ifstrequal{#1}{misuse}{%
+              \headernotemisuse
+            }{%
+              \ifstrequal{#1}{diagnostic}{%
+                \headernotediagnostic
+              }{%
+                \ifstrequal{#1}{closing}{%
+                  \headernoteclosing
+                }{%
+                  \headernotenote
+                }%
+              }%
+            }%
+          }%
+        }%
+      }%
+    }%
   }%
 }
 
@@ -149,6 +313,19 @@
 %--------------------------------------------------------------------
 % Note box environments
 %--------------------------------------------------------------------
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxplainline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxplainbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxplain}
 
 \newmdenv[
   skipabove=0.8\baselineskip,
@@ -167,6 +344,19 @@
   skipabove=0.8\baselineskip,
   skipbelow=0.8\baselineskip,
   linewidth=0.8pt,
+  linecolor=noteboxbreadcrumbline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxbreadcrumbbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxbreadcrumb}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
   linecolor=noteboxwarningline,
   roundcorner=4pt,
   backgroundcolor=noteboxwarningbg,
@@ -175,3 +365,81 @@
   innerleftmargin=0.95em,
   innerrightmargin=0.95em,
 ]{noteboxwarning}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxcontrastline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxcontrastbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxcontrast}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxnavigationline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxnavigationbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxnavigation}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxbridgeline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxbridgebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxbridge}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxmisuseline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxmisusebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxmisuse}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxdiagnosticline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxdiagnosticbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxdiagnostic}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxclosingline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxclosingbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxclosing}

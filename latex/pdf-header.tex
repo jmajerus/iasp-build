@@ -51,6 +51,13 @@
 \usepackage{ifthen}
 \usepackage{etoolbox}
 
+\providecommand{\RenderGrayscaleScreen}{0}
+\providecommand{\RenderGrayscalePrint}{0}
+\providecommand{\BodyRunningHeadersEnabled}{0}
+\providecommand{\AppendixRunningHeadersEnabled}{0}
+\providecommand{\RunningHeaderScope}{chapter}
+\providecommand{\AppendixRunningHeaderScope}{chapter}
+
 % --------------------------------------------------
 % Font configuration (XeLaTeX)
 % --------------------------------------------------
@@ -93,6 +100,10 @@
 
 \newboolean{isprint}
 \newboolean{isscreen}
+\newif\ifiaspinappendixmode
+\iaspinappendixmodefalse
+\newif\ifiaspChapterMarkSeen
+\iaspChapterMarkSeenfalse
 
 % default to screen
 \setboolean{isprint}{false}
@@ -105,6 +116,19 @@
     \setboolean{isscreen}{false}%%
   }{}
 \fi
+
+\newboolean{rendergrayscale}
+\setboolean{rendergrayscale}{false}
+
+\ifthenelse{\boolean{isprint}}{%%
+  \ifthenelse{\equal{\RenderGrayscalePrint}{1}}{%%
+    \setboolean{rendergrayscale}{true}%%
+  }{}
+}{%%
+  \ifthenelse{\equal{\RenderGrayscaleScreen}{1}}{%%
+    \setboolean{rendergrayscale}{true}%%
+  }{}
+}
 
 
 % --------------------------------------------------
@@ -132,6 +156,49 @@
 \usepackage{fancyhdr}
 \newcommand{\defaultpagestylename}{fancy}
 
+\newcommand{\iaspRunningHeadFormat}[1]{\small\itshape\nouppercase{#1}}
+
+\newcommand{\iaspPartHeaderText}{}
+\newif\ifiaspParthasvalue
+\iaspParthasvaluefalse
+
+\newcommand{\iaspSetPartHeader}[1]{%%
+  \gdef\iaspPartHeaderText{#1}%%
+  \iaspParthasvaluetrue%%
+}
+
+\newcommand{\iaspRunningHeadSource}{%%
+  \ifthenelse{\equal{\RunningHeaderScope}{part}}{%%
+    \ifiaspParthasvalue
+      \iaspPartHeaderText%%
+    \else
+      \leftmark%%
+    \fi
+  }{%%
+    \leftmark%%
+  }%%
+}
+
+\newcommand{\iaspAppendixRunningHeadSource}{%%
+  \ifthenelse{\equal{\AppendixRunningHeaderScope}{section}}{%%
+    \leftmark%%
+  }{%%
+    \ifiaspChapterMarkSeen
+      \iaspLastChapterMark%%
+    \else
+      \leftmark%%
+    \fi
+  }%%
+}
+
+\newcommand{\iaspRunningHeadText}{%%
+  \ifiaspinappendixmode
+    \ifnum\AppendixRunningHeadersEnabled=1 \iaspRunningHeadFormat{\iaspAppendixRunningHeadSource}\fi%%
+  \else
+    \ifnum\BodyRunningHeadersEnabled=1 \iaspRunningHeadFormat{\iaspRunningHeadSource}\fi%%
+  \fi
+}
+
 % For print, use a classic running-head layout.
 % For screen, keep things subdued: footer page number only,
 % and no horizontal head rule.
@@ -140,25 +207,47 @@
   \fancyhf{}% clear
   % Page number at bottom center
   \fancyfoot[C]{\thepage}
-  % Running heads: small italic for visual separation
+  % Running heads: small italic for visual separation (if enabled)
   % LE = Left side on Even pages, RO = Right side on Odd pages
-  \fancyhead[LE,RO]{\small\itshape\nouppercase{\leftmark}}
+  \fancyhead[LE,RO]{\iaspRunningHeadText}
   % Keep default \headrulewidth (visible horizontal line)
 }{%%
-  % Screen: very minimal, no running heads, no top rule
+  % Screen: minimal; running heads are optional and disabled by default
   \pagestyle{fancy}
   \fancyhf{}
   \fancyfoot[C]{\thepage}
+  \fancyhead[LE,RO]{\iaspRunningHeadText}
   \renewcommand{\headrulewidth}{0pt}
+}
+
+\fancypagestyle{plain}{%% ensure chapter-opening pages follow the same rules
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \fancyhead[LE,RO]{\iaspRunningHeadText}
+  \ifthenelse{\boolean{isprint}}{%%
+    \renewcommand{\headrulewidth}{0.4pt}%%
+  }{%%
+    \renewcommand{\headrulewidth}{0pt}%%
+  }
 }
 
 
 % Make sure \chaptermark exists even for 'article' class
 \providecommand{\chaptermark}[1]{}
 
+\newcommand{\iaspLastChapterMark}{}
+\newcommand{\iaspLastSectionMark}{}
+
 % Use chapter titles for \leftmark (no section marks in header)
-\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
-\renewcommand{\sectionmark}[1]{}
+\renewcommand{\chaptermark}[1]{%%
+  \gdef\iaspLastChapterMark{#1}%%
+  \iaspChapterMarkSeentrue%%
+  \markboth{#1}{}%%
+}
+\renewcommand{\sectionmark}[1]{%%
+  \gdef\iaspLastSectionMark{#1}%%
+  \markboth{#1}{}%%
+}
 
 % Make sure header area is tall enough
 \setlength{\headheight}{14pt}
@@ -288,6 +377,8 @@
 % --------------------------------------------------
 \usepackage[toc,page]{appendix}
 
+\pretocmd{\appendix}{\iaspinappendixmodetrue}{}{}
+
 % When Pandoc/Lua filter switches to appendix mode
 % (\appendix), chapters become "Appendix A", "Appendix B", etc.
 % You can tweak the label if you like:
@@ -300,6 +391,10 @@
 % --------------------------------------------------
 \usepackage{mdframed}
 \usepackage{xcolor}
+
+\ifthenelse{\boolean{rendergrayscale}}{%%
+  \selectcolormodel{gray}%%
+}{}
 
 
 % Sidebar background differs by mode; make it clearly visible.
@@ -316,14 +411,77 @@
 }
 
 % Per-environment framing (kept in dedicated inputs for easy tweaking)
+\definecolor{noteboxplainbg}{HTML}{FFF9ED}
+\definecolor{noteboxplainline}{HTML}{E6C35A}
 \definecolor{noteboxbg}{HTML}{FFF6D5}
 \definecolor{noteboxline}{HTML}{D9A300}
+\definecolor{noteboxbreadcrumbbg}{HTML}{EEF5FB}
+\definecolor{noteboxbreadcrumbline}{HTML}{1D5671}
 \definecolor{noteboxwarningbg}{HTML}{FFF1E6}
 \definecolor{noteboxwarningline}{HTML}{C05621}
+\definecolor{noteboxcontrastbg}{HTML}{F4EBFF}
+\definecolor{noteboxcontrastline}{HTML}{7E3AF2}
+\definecolor{noteboxnavigationbg}{HTML}{E6F6F7}
+\definecolor{noteboxnavigationline}{HTML}{0F6B75}
+\definecolor{noteboxbridgebg}{HTML}{F4F0FF}
+\definecolor{noteboxbridgeline}{HTML}{6F58B9}
+\definecolor{noteboxmisusebg}{HTML}{FFEDEA}
+\definecolor{noteboxmisuseline}{HTML}{B42318}
+\definecolor{noteboxdiagnosticbg}{HTML}{E7F0FF}
+\definecolor{noteboxdiagnosticline}{HTML}{2454C6}
+\definecolor{noteboxclosingbg}{HTML}{F5F7FB}
+\definecolor{noteboxclosingline}{HTML}{475467}
 \definecolor{exampleboxbg}{HTML}{E8F1FF}
 \definecolor{exampleboxline}{HTML}{2F80ED}
 \definecolor{definitionboxbg}{HTML}{E6F7EF}
 \definecolor{definitionboxline}{HTML}{1B7F4D}
+
+\newcommand{\iaspConvertedGraySpec}{}
+\newcommand{\iaspConvertColorToGray}[1]{%%
+  \convertcolorspec{named}{#1}{gray}{\iaspConvertedGraySpec}%%
+  \definecolor{#1}{gray}{\iaspConvertedGraySpec}%%
+}
+
+\ifthenelse{\boolean{rendergrayscale}}{%%
+  \forcsvlist{\iaspConvertColorToGray}{%%
+    noteboxplainbg,%%
+    noteboxplainline,%%
+    noteboxbg,%%
+    noteboxline,%%
+    noteboxbreadcrumbbg,%%
+    noteboxbreadcrumbline,%%
+    noteboxwarningbg,%%
+    noteboxwarningline,%%
+    noteboxcontrastbg,%%
+    noteboxcontrastline,%%
+    noteboxnavigationbg,%%
+    noteboxnavigationline,%%
+    noteboxbridgebg,%%
+    noteboxbridgeline,%%
+    noteboxmisusebg,%%
+    noteboxmisuseline,%%
+    noteboxdiagnosticbg,%%
+    noteboxdiagnosticline,%%
+    noteboxclosingbg,%%
+    noteboxclosingline,%%
+    exampleboxbg,%%
+    exampleboxline,%%
+    definitionboxbg,%%
+    definitionboxline%%
+  }%%
+}{}
+
+\providecommand{\notebadgebgnormal}{noteboxline!15!white}
+\providecommand{\notebadgebgbreadcrumb}{noteboxbreadcrumbline!18!white}
+\providecommand{\notebadgebgwarning}{noteboxwarningline!15!white}
+\providecommand{\notebadgebgcontrast}{noteboxcontrastline!18!white}
+\providecommand{\notebadgebgnavigation}{noteboxnavigationline!18!white}
+\providecommand{\notebadgebgbridge}{noteboxbridgeline!18!white}
+\providecommand{\notebadgebgmisuse}{noteboxmisuseline!15!white}
+\providecommand{\notebadgebgdiagnostic}{noteboxdiagnosticline!18!white}
+\providecommand{\notebadgebgclosing}{noteboxclosingline!18!white}
+\providecommand{\sidebarbadgebg}{sidebarbg!70!white}
+\providecommand{\boxbadgebg}{sidebarbg!70!white}
 
 \input{iasp_tooling/latex/box-sidebar.tex}
 \input{iasp_tooling/latex/box-sidebar-inline.tex}

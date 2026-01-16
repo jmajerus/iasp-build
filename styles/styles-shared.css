@@ -73,10 +73,10 @@ h3[epub|type~="subchapter"] {
 
 /* Asides and callouts */
 [epub|type~="aside"] {
-  border: 1.5px solid rgba(0, 0, 0, 0.18);
+  border: 1.5px solid rgba(0, 0, 0, 0.14);
   border-left-width: 4px;
   border-radius: 10px;
-  background-color: rgba(0, 0, 0, 0.035);
+  background-color: rgba(0, 0, 0, 0.022);
   padding: 1.1em 1.2em;
   margin: 1.2em 0;
   font-size: 0.95em;
@@ -94,7 +94,7 @@ h3[epub|type~="subchapter"] {
   content: "";
   position: absolute;
   inset: 0.5em;
-  border: 1px dashed rgba(0, 0, 0, 0.08);
+  border: 1px dashed rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   pointer-events: none;
 }
@@ -121,7 +121,7 @@ h3[epub|type~="subchapter"] {
   font-weight: 600;
   border-radius: 999px;
   padding: 0.18em 0.65em 0.12em 0.55em;
-  background-color: rgba(0, 0, 0, 0.08);
+  background-color: rgba(0, 0, 0, 0.065);
   color: #333;
   margin: 0 0 0.45em 0;
 }
@@ -169,8 +169,8 @@ h3[epub|type~="subchapter"] {
 }
 
 [epub|type~="sidebar-inline"] {
-  border-left: 3px solid #999;
-  background-color: rgba(0, 0, 0, 0.02);
+  border-left: 3px solid #b3b3b3;
+  background-color: rgba(0, 0, 0, 0.012);
   padding: 0.45em 0.9em;
   margin: 0.8em 0;
   font-size: 0.95em;
@@ -187,18 +187,93 @@ h3[epub|type~="subchapter"] {
   font-style: italic;
 }
 
+/* Shared note variables so subclasses can override palette without rewriting layout. */
 [epub|type~="note"] {
-  border-left: 3px solid #d9a300;
-  background-color: #fff6d1;
-  padding: 0.7em 1em;
+  --note-border-color: #e6c35a;
+  --note-background-color: #fff9ed;
+  --note-marker-color: #8a5a00;
+  --note-marker-bg: rgba(230, 195, 90, 0.18);
+  border-left: 3px solid var(--note-border-color, #e6c35a);
+  background-color: var(--note-background-color, #fff9ed);
+  padding: 0.55em 1em 0.85em;
   margin: 1.1em 0;
   font-size: 0.95em;
   line-height: 1.4;
 }
 
+/* Trim excess space ahead of note titles */
+[epub|type~="note"] > :first-child {
+  margin-top: 0;
+}
+
+[epub|type~="note"] > h2:first-child,
+[epub|type~="note"] > h3:first-child,
+[epub|type~="note"] > h4:first-child,
+[epub|type~="note"] > h5:first-child,
+[epub|type~="note"] > h6:first-child {
+  margin-top: 0.15em;
+}
+
 [epub|type~="note"].warning {
-  border-left-color: #c05621;
-  background-color: #fff1e6;
+  --note-border-color: #c05621;
+  --note-background-color: #fff1e6;
+  --note-marker-color: #8c2f00;
+  --note-marker-bg: rgba(192, 86, 33, 0.18);
+}
+
+[epub|type~="note"].contrast {
+  --note-border-color: #7e3af2;
+  --note-background-color: #f4ebff;
+  --note-marker-color: #4c1d95;
+  --note-marker-bg: rgba(126, 58, 242, 0.16);
+}
+
+[epub|type~="note"].navigation {
+  --note-border-color: #0f6b75;
+  --note-background-color: #e6f6f7;
+  --note-marker-color: #084a52;
+  --note-marker-bg: rgba(15, 107, 117, 0.16);
+}
+
+[epub|type~="note"].bridge {
+  --note-border-color: #6f58b9;
+  --note-background-color: #f4f0ff;
+  --note-marker-color: #4a3792;
+  --note-marker-bg: rgba(111, 88, 185, 0.17);
+}
+
+[epub|type~="note"].misuse {
+  --note-border-color: #b42318;
+  --note-background-color: #ffecea;
+  --note-marker-color: #7a120c;
+  --note-marker-bg: rgba(180, 35, 24, 0.18);
+}
+
+[epub|type~="note"].diagnostic {
+  --note-border-color: #2454c6;
+  --note-background-color: #e7f0ff;
+  --note-marker-color: #17337a;
+  --note-marker-bg: rgba(36, 84, 198, 0.18);
+}
+
+[epub|type~="note"].closing {
+  --note-border-color: #475467;
+  --note-background-color: #f5f7fb;
+  --note-marker-color: #2f3949;
+  --note-marker-bg: rgba(71, 84, 103, 0.16);
+}
+
+[epub|type~="note"].idea,
+[epub|type~="note"].insight {
+  --note-border-color: #d9a300;
+  --note-background-color: #fff6d1;
+}
+
+[epub|type~="note"].breadcrumb {
+  --note-border-color: #1d5671;
+  --note-background-color: #eef5fb;
+  --note-marker-color: #153a4a;
+  --note-marker-bg: rgba(29, 86, 113, 0.16);
 }
 
 [epub|type~="example"] {
@@ -287,8 +362,8 @@ blockquote {
 
 [epub|type~="aside"] blockquote,
 [epub|type~="sidebar-inline"] blockquote {
-  border-left-color: rgba(0, 0, 0, 0.25);
-  background-color: rgba(0, 0, 0, 0.06);
+  border-left-color: rgba(0, 0, 0, 0.18);
+  background-color: rgba(0, 0, 0, 0.045);
 }
 
 blockquote > :first-child {

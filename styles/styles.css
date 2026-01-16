@@ -211,20 +211,105 @@ h2[epub|type~="subchapter"] {
 [epub|type~="note"],
 [epub|type~="example"],
 [epub|type~="definition"] {
-  border-left: 4px solid #d9a300;
-  background-color: #fff6d5;
   padding: 0.9em 1em;
   margin: 1.4em 0;
   border-radius: 0 6px 6px 0;
 }
 
+/* Note variants override the --note-* variables below to customize palettes. */
+[epub|type~="note"] {
+  --note-border-color: #e6c35a;
+  --note-background-color: #fff9ed;
+  --note-marker-color: #8a5a00;
+  --note-marker-bg: rgba(230, 195, 90, 0.18);
+  border-left: 4px solid var(--note-border-color, #e6c35a);
+  background-color: var(--note-background-color, #fff9ed);
+  padding-top: 0.55em;
+  padding-bottom: 0.85em;
+}
+
+/* Trim excess space ahead of note titles */
+[epub|type~="note"] > :first-child {
+  margin-top: 0;
+}
+
+[epub|type~="note"] > h2:first-child,
+[epub|type~="note"] > h3:first-child,
+[epub|type~="note"] > h4:first-child,
+[epub|type~="note"] > h5:first-child,
+[epub|type~="note"] > h6:first-child {
+  margin-top: 0.15em;
+}
+
+[epub|type~="note"].idea,
+[epub|type~="note"].insight {
+  --note-border-color: #d9a300;
+  --note-background-color: #fff6d5;
+}
+
+[epub|type~="note"].warning {
+  --note-border-color: #c05621;
+  --note-background-color: #fff1e6;
+  --note-marker-color: #8c2f00;
+  --note-marker-bg: rgba(192, 86, 33, 0.18);
+}
+
+[epub|type~="note"].contrast {
+  --note-border-color: #7e3af2;
+  --note-background-color: #f4ebff;
+  --note-marker-color: #4c1d95;
+  --note-marker-bg: rgba(126, 58, 242, 0.16);
+}
+
+[epub|type~="note"].navigation {
+  --note-border-color: #0f6b75;
+  --note-background-color: #e6f6f7;
+  --note-marker-color: #084a52;
+  --note-marker-bg: rgba(15, 107, 117, 0.16);
+}
+
+[epub|type~="note"].bridge {
+  --note-border-color: #6f58b9;
+  --note-background-color: #f4f0ff;
+  --note-marker-color: #4a3792;
+  --note-marker-bg: rgba(111, 88, 185, 0.17);
+}
+
+[epub|type~="note"].misuse {
+  --note-border-color: #b42318;
+  --note-background-color: #ffecea;
+  --note-marker-color: #7a120c;
+  --note-marker-bg: rgba(180, 35, 24, 0.18);
+}
+
+[epub|type~="note"].diagnostic {
+  --note-border-color: #2454c6;
+  --note-background-color: #e7f0ff;
+  --note-marker-color: #17337a;
+  --note-marker-bg: rgba(36, 84, 198, 0.18);
+}
+
+[epub|type~="note"].closing {
+  --note-border-color: #475467;
+  --note-background-color: #f5f7fb;
+  --note-marker-color: #2f3949;
+  --note-marker-bg: rgba(71, 84, 103, 0.16);
+}
+
+[epub|type~="note"].breadcrumb {
+  --note-border-color: #1d5671;
+  --note-background-color: #eef5fb;
+  --note-marker-color: #153a4a;
+  --note-marker-bg: rgba(29, 86, 113, 0.16);
+}
+
 [epub|type~="example"] {
-  border-left-color: #2f80ed;
+  border-left: 4px solid #2f80ed;
   background-color: #e8f1ff;
 }
 
 [epub|type~="definition"] {
-  border-left-color: #1b7f4d;
+  border-left: 4px solid #1b7f4d;
   background-color: #e6f7ef;
 }
 
@@ -248,11 +333,14 @@ h2[epub|type~="subchapter"] {
   width: 1.7em;
   height: 1.7em;
   border-radius: 999px;
-  background-color: rgba(217, 163, 0, 0.18);
+  background-color: var(
+    --glyph-marker-background,
+    var(--note-marker-bg, rgba(230, 195, 90, 0.18))
+  );
   font-size: 1.05em;
   line-height: 1;
   font-family: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  color: #8a5a00;
+  color: var(--note-marker-color, #8a5a00);
   margin-bottom: 0.45em;
   letter-spacing: 0;
   text-transform: none;
@@ -300,7 +388,7 @@ h2[epub|type~="subchapter"] {
   width: 2.05em;
   height: 2.05em;
   border-radius: 999px;
-  background-color: rgba(122, 74, 196, 0.15);
+  background-color: var(--glyph-marker-background, rgba(122, 74, 196, 0.15));
   margin: 0 0 0.4em 0;
   font-weight: 600;
 }
@@ -343,15 +431,41 @@ h2[epub|type~="subchapter"] {
   width: 2.05em;
   height: 2.05em;
   border-radius: 999px;
-  background-color: rgba(106, 63, 179, 0.15);
+  background-color: var(--glyph-marker-background, rgba(106, 63, 179, 0.15));
   font-weight: 600;
   margin: 0 0 0.4em 0;
 }
 
+[epub|type~="note"].breadcrumb::before {
+  content: "➤";
+}
+
+[epub|type~="note"].contrast::before {
+  content: "⇆";
+}
+
+[epub|type~="note"].navigation::before {
+  content: "⇢";
+}
+
+[epub|type~="note"].bridge::before {
+  content: "⟷";
+}
+
+[epub|type~="note"].misuse::before {
+  content: "✕";
+}
+
+[epub|type~="note"].diagnostic::before {
+  content: "🔍";
+}
+
+[epub|type~="note"].closing::before {
+  content: "∎";
+}
+
 [epub|type~="note"].warning::before {
   content: "⚠️";
-  background-color: rgba(192, 86, 33, 0.18);
-  color: #8c2f00;
 }
 
 /* ==========================================================================

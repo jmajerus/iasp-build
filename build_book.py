@@ -42,6 +42,7 @@ from xml.etree import ElementTree as ET
 
 from .lib import config as iasp_config
 from .lib import layout_overrides, vscode_tasks
+from .lib.background_palettes import select_luma_offset
 from .lib.order_sources import load_book_order
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
 from .preprocess import config as preprocess_config
@@ -65,6 +66,7 @@ PDF_LAYOUT_OVERRIDES = BUILD_DIR / layout_overrides.PDF_OVERRIDE_NAME
 BASE_CSS_FILES = [CSS_SHARED, CSS_EPUB]
 IASP_FILTER = TOOLING_ROOT / "lua" / "iasp-semantics.lua"
 CATALOG_COLLECTIONS_FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
+CHAPTER_FILTER = TOOLING_ROOT / "lua" / "chapter_headings.lua"
 METADATA_JSON = ROOT / "metadata.json"
 METADATA_YAML = ROOT / "metadata.yaml"
 BUILD_PROFILES_FILE = ROOT / "build-profiles.json"
@@ -123,6 +125,24 @@ def _config_bool(value: Any, default: bool) -> bool:
 def _config_int(value: Any, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
     try:
         number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+def _config_float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    try:
+        number = float(value)
     except (TypeError, ValueError):
         number = default
     if minimum is not None:
@@ -609,6 +629,17 @@ def update_build_metadata(build_stage: str | None = None) -> None:
 
     normalized_stage = normalize_build_stage(build_stage)
 
+    glyph_palette_choice = LAYOUT_SETTINGS.get("glyph_background_palette")
+    badge_palette_choice = LAYOUT_SETTINGS.get("badge_background_palette")
+    glyph_luma_raw = _config_float(
+        LAYOUT_SETTINGS.get("glyph_background_luma_offset"), 0.0, minimum=-0.5, maximum=0.5
+    )
+    badge_luma_raw = _config_float(
+        LAYOUT_SETTINGS.get("badge_background_luma_offset"), 0.0, minimum=-0.5, maximum=0.5
+    )
+    glyph_luma_offset, glyph_palette_name = select_luma_offset("glyph", glyph_palette_choice, glyph_luma_raw)
+    badge_luma_offset, badge_palette_name = select_luma_offset("badge", badge_palette_choice, badge_luma_raw)
+
     dynamic_metadata: dict[str, object] = {
         "build-number": build_number,
         "build-timestamp": iso_utc,
@@ -620,7 +651,17 @@ def update_build_metadata(build_stage: str | None = None) -> None:
         "final-build": normalized_stage != "draft",
         "layout-named-block-badges": _config_bool(LAYOUT_SETTINGS.get("named_block_badges"), False),
         "layout-named-note-badges": _config_bool(LAYOUT_SETTINGS.get("named_note_badges"), False),
+        "layout-glyph-background-luma-offset": glyph_luma_offset,
+        "layout-badge-background-luma-offset": badge_luma_offset,
+        "layout-glyph-background-force-white": _config_bool(
+            LAYOUT_SETTINGS.get("glyph_background_force_white"), False
+        ),
     }
+
+    if glyph_palette_name:
+        dynamic_metadata["layout-glyph-background-palette"] = glyph_palette_name
+    if badge_palette_name:
+        dynamic_metadata["layout-badge-background-palette"] = badge_palette_name
 
     if PROFILE:
         dynamic_metadata["build-profile"] = PROFILE.name
@@ -689,6 +730,17 @@ def append_catalog_collections_filter(cmd: list[str]) -> None:
 
     cmd += ["--lua-filter", str(CATALOG_COLLECTIONS_FILTER)]
     cmd += ["-M", f"catalog_collections.config={config_path}"]
+
+
+def append_semantic_filters(cmd: list[str], *, enabled: bool) -> None:
+    """Attach chapter-normalization + semantic filters when requested."""
+
+    if not enabled:
+        return
+
+    for filter_path in (CHAPTER_FILTER, IASP_FILTER):
+        if filter_path.exists():
+            cmd += ["--lua-filter", str(filter_path)]
 
 
 def enable_citations(cmd: list[str]) -> None:
@@ -1369,9 +1421,7 @@ def build_epub(use_filter: bool = True) -> None:
 
     append_catalog_collections_filter(cmd)
 
-    # EPUB only uses the main Lua filter
-    if use_filter and IASP_FILTER.exists():
-        cmd += ["--lua-filter", str(IASP_FILTER)]
+    append_semantic_filters(cmd, enabled=use_filter)
 
     enable_citations(cmd)
 
@@ -1406,8 +1456,7 @@ def build_office_format(
 
     append_catalog_collections_filter(cmd)
 
-    if use_filter and IASP_FILTER.exists():
-        cmd += ["--lua-filter", str(IASP_FILTER)]
+    append_semantic_filters(cmd, enabled=use_filter)
 
     enable_citations(cmd)
 
@@ -1468,9 +1517,7 @@ def make_pdf_base_cmd(
 
     append_catalog_collections_filter(cmd)
 
-    if use_filter and IASP_FILTER.exists():
-        # Single Lua filter handles chapters, appendices, sidebars, epigraphs
-        cmd += ["--lua-filter", str(IASP_FILTER)]
+    append_semantic_filters(cmd, enabled=use_filter)
 
     enable_citations(cmd)
 
@@ -1615,8 +1662,7 @@ def build_article_pdf(
 
     append_catalog_collections_filter(cmd)
 
-    if use_filter and IASP_FILTER.exists():
-        cmd += ["--lua-filter", str(IASP_FILTER)]
+    append_semantic_filters(cmd, enabled=use_filter)
 
     run([*cmd, "-o", str(pdf_out)])
 
@@ -1709,8 +1755,7 @@ def build_single_markdown(
 
     append_catalog_collections_filter(base_cmd)
 
-    if use_filter and IASP_FILTER.exists():
-        base_cmd += ["--lua-filter", str(IASP_FILTER)]
+    append_semantic_filters(base_cmd, enabled=use_filter)
 
     run([*base_cmd, "-o", str(pdf_out)])
     run([*base_cmd, "-t", "latex", "-o", str(tex_out)])

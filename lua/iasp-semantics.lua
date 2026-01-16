@@ -1980,6 +1980,13 @@ local NOTE_VARIANTS = {
   "idea",
   "insight",
   "warning",
+  "breadcrumb",
+  "contrast",
+  "navigation",
+  "bridge",
+  "misuse",
+  "diagnostic",
+  "closing",
 }
 
 local function chapter_page_break_block(format_hint)
@@ -2071,6 +2078,66 @@ end
 
 
 
+local function primary_chapter_header(div)
+  if not div or not div.content then
+    return nil
+  end
+
+  for _, block in ipairs(div.content) do
+    if block.t == "Header" then
+      return block
+    elseif is_trivial_raw_latex(block) then
+      -- skip helper anchors without aborting the search
+    elseif block.t == "Div" and (not block.content or #block.content == 0) then
+      -- ignore empty placeholder wrappers
+    else
+      break
+    end
+  end
+
+  return nil
+end
+
+local function ensure_chapter_header_semantics(div)
+  local header = primary_chapter_header(div)
+  if not header then
+    return false
+  end
+
+  header.attributes = header.attributes or {}
+  return add_epub_type_token(header.attributes, "chapter")
+end
+
+local function ensure_appendix_header_semantics(div)
+  local header = primary_chapter_header(div)
+  if not header then
+    return false
+  end
+
+  header.attributes = header.attributes or {}
+  return add_epub_type_token(header.attributes, "appendix")
+end
+
+local function primary_part_heading_text(div)
+  if not div or not div.content then
+    return nil
+  end
+
+  for _, block in ipairs(div.content) do
+    if block.t == "Header" then
+      return utils.stringify(block)
+    elseif is_trivial_raw_latex(block) then
+      -- skip helper anchors
+    elseif block.t == "Div" and (not block.content or #block.content == 0) then
+      -- ignore placeholder wrappers
+    else
+      break
+    end
+  end
+
+  return nil
+end
+
 local function handle_div(div)
   local semantics_changed = apply_semantic_aliases(div)
   local allowed, stage_changed = enforce_stage_visibility(div)
@@ -2153,12 +2220,44 @@ local function handle_div(div)
     end
   end
 
-  if not FORMAT:match("latex") then
+  if has_epub_type(div.attributes, "chapter") then
+    if ensure_chapter_header_semantics(div) then
+      mutated = true
+    end
+  end
+
+  local is_appendix_div = has_epub_type(div.attributes, "appendix")
+  if is_appendix_div then
+    if ensure_appendix_header_semantics(div) then
+      mutated = true
+    end
+  end
+
+  local is_latex = FORMAT:match("latex") ~= nil
+  if not is_latex then
     return mutated and div or nil
   end
 
+  if is_appendix_div then
+    local out = {}
+    if not appendix_started then
+      appendix_started = true
+      table.insert(out, pandoc.RawBlock("latex", "\\appendix"))
+      table.insert(out, pandoc.RawBlock("latex", "\\iaspSetPartHeader{Appendices}"))
+    end
+    table.insert(out, div)
+    return out
+  end
+
   if has_epub_type(div.attributes, "part") then
-    return wrap_in_env(div, "parttitlepage")
+    local blocks = wrap_in_env(div, "parttitlepage")
+    local heading_text = primary_part_heading_text(div)
+    if heading_text and heading_text ~= "" then
+      table.insert(blocks, 1,
+        pandoc.RawBlock("latex", "\\iaspSetPartHeader{" .. latex_escape_argument(heading_text) .. "}\\relax\n")
+      )
+    end
+    return blocks
   end
 
   if has_epub_type(div.attributes, "bridge") then
@@ -2172,7 +2271,28 @@ local function handle_div(div)
   if has_epub_type(div.attributes, "note") then
     local variant = note_variant(div)
     inject_note_variant(div, variant)
-    local env = variant == "warning" and "noteboxwarning" or "notebox"
+    local env
+    if variant == "warning" then
+      env = "noteboxwarning"
+    elseif variant == "breadcrumb" then
+      env = "noteboxbreadcrumb"
+    elseif variant == "navigation" then
+      env = "noteboxnavigation"
+    elseif variant == "bridge" then
+      env = "noteboxbridge"
+    elseif variant == "misuse" then
+      env = "noteboxmisuse"
+    elseif variant == "diagnostic" then
+      env = "noteboxdiagnostic"
+    elseif variant == "contrast" then
+      env = "noteboxcontrast"
+    elseif variant == "closing" then
+      env = "noteboxclosing"
+    elseif not variant then
+      env = "noteboxplain"
+    else
+      env = "notebox"
+    end
     return wrap_in_env(div, env)
   end
 
@@ -2224,9 +2344,7 @@ local function handle_header(h)
   local is_level_one_header = (h.level or 0) == 1
 
   local treat_as_chapter = false
-  if wants_latex and has_chapter_semantics then
-    treat_as_chapter = true
-  elseif wants_office_break and (has_chapter_semantics or is_level_one_header) then
+  if wants_office_break and (has_chapter_semantics or is_level_one_header) then
     treat_as_chapter = true
   end
 
@@ -2291,6 +2409,7 @@ local function handle_header(h)
     if not appendix_started then
       appendix_started = true
       table.insert(out, pandoc.RawBlock("latex", "\\appendix"))
+      table.insert(out, pandoc.RawBlock("latex", "\\iaspSetPartHeader{Appendices}"))
     end
     table.insert(out, h)
     return out
