@@ -26,6 +26,7 @@ Usage:
 """
 
 import copy
+import itertools
 import json
 import os
 import re
@@ -67,6 +68,8 @@ BASE_CSS_FILES = [CSS_SHARED, CSS_EPUB]
 IASP_FILTER = TOOLING_ROOT / "lua" / "iasp-semantics.lua"
 CATALOG_COLLECTIONS_FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
 CHAPTER_FILTER = TOOLING_ROOT / "lua" / "chapter_headings.lua"
+TITLE_FROM_HEADING_FILTER = TOOLING_ROOT / "lua" / "title_from_first_heading.lua"
+RUNNING_HEAD_FILTER = TOOLING_ROOT / "lua" / "running_headers.lua"
 METADATA_JSON = ROOT / "metadata.json"
 METADATA_YAML = ROOT / "metadata.yaml"
 BUILD_PROFILES_FILE = ROOT / "build-profiles.json"
@@ -78,8 +81,8 @@ LATEX_DIR = TOOLING_ROOT / "latex"
 PDF_HEADER = LATEX_DIR / "pdf-header.tex"
 BLOCKQUOTE_STYLE = LATEX_DIR / "box-blockquote.tex"
 SENTINEL_HEADER = LATEX_DIR / "sentinel-logging.tex"
-TOC_GENERATOR = ROOT / "generate_toc.py"
-ORDER_SNAPSHOT_GENERATOR = ROOT / "generate_order_snapshot.py"
+TOC_GENERATOR = TOOLING_ROOT / "scripts" / "generate_toc.py"
+ORDER_SNAPSHOT_GENERATOR = TOOLING_ROOT / "scripts" / "generate_order_snapshot.py"
 COVER_IMAGE = ROOT / "cover.jpg"
 QUOTE_FIXTURE = ROOT / "tests" / "quote-playground.md"
 CHAPTER_OUTPUT_DIR = BUILD_DIR / "chapters"
@@ -94,6 +97,7 @@ RTF_OUT = BUILD_DIR / "The-Struggle-Against-Dehumanization.rtf"
 QUOTE_PLAYGROUND_PDF = BUILD_DIR / "quote-playground.pdf"
 QUOTE_PLAYGROUND_TEX = BUILD_DIR / "quote-playground.tex"
 EPUBCHECK_PROFILE = "EPUB_3.3"
+PDF_PAGE_COUNT_CACHE = BUILD_DIR / "pdf-page-counts.json"
 
 DEFAULT_OUTPUT_BASENAME = "The-Struggle-Against-Dehumanization"
 
@@ -339,6 +343,68 @@ def run(cmd: list[str]) -> None:
     if result.returncode != 0:
         print(f"\n!! Command failed with exit code {result.returncode}")
         sys.exit(result.returncode)
+
+
+def probe_pdf_page_count(pdf_path: Path) -> int | None:
+    if not pdf_path.exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["pdfinfo", str(pdf_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        if line.lower().startswith("pages:"):
+            try:
+                return int(line.split(":", 1)[1].strip())
+            except (ValueError, IndexError):
+                return None
+    return None
+
+
+def update_page_count_cache(pdf_path: Path, pdfmode: str | None) -> None:
+    pages = probe_pdf_page_count(pdf_path)
+    if pages is None:
+        return
+
+    key = (pdfmode or "screen").strip().lower() or "screen"
+
+    cache: dict[str, Any]
+    if PDF_PAGE_COUNT_CACHE.exists():
+        try:
+            cache = json.loads(PDF_PAGE_COUNT_CACHE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            cache = {}
+    else:
+        cache = {}
+
+    if not isinstance(cache, dict):
+        cache = {}
+
+    try:
+        relative = pdf_path.relative_to(ROOT)
+        source = str(relative)
+    except ValueError:
+        source = str(pdf_path)
+
+    cache[key] = {
+        "pages": pages,
+        "source": source,
+        "captured": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        PDF_PAGE_COUNT_CACHE.write_text(json.dumps(cache, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def run_pre_build_hooks() -> None:
@@ -738,7 +804,12 @@ def append_semantic_filters(cmd: list[str], *, enabled: bool) -> None:
     if not enabled:
         return
 
-    for filter_path in (CHAPTER_FILTER, IASP_FILTER):
+    for filter_path in (
+        TITLE_FROM_HEADING_FILTER,
+        CHAPTER_FILTER,
+        IASP_FILTER,
+        RUNNING_HEAD_FILTER,
+    ):
         if filter_path.exists():
             cmd += ["--lua-filter", str(filter_path)]
 
@@ -970,6 +1041,9 @@ def _insert_before(parent: ET.Element, new_node: ET.Element, ref_node: ET.Elemen
 
 
 def _heading_level_from_tag(tag: str) -> int | None:
+    if not isinstance(tag, str):
+        return None
+
     local = tag
     if tag.startswith(XHTML):
         local = tag[len(XHTML) :]
@@ -1004,9 +1078,14 @@ def _resolve_heading_identifier(
 
 
 def _populate_anchor_from_heading(anchor: ET.Element, heading: HeadingContent | NavHeading) -> None:
+    for child in list(anchor):
+        anchor.remove(child)
+    anchor.text = None
+
     lead_text = getattr(heading, "lead_text", "") or ""
     if lead_text:
         anchor.text = lead_text
+
     for child in getattr(heading, "children", []):
         anchor.append(copy.deepcopy(child))
     has_children = len(list(anchor)) > 0
@@ -1028,6 +1107,38 @@ def _append_nav_children(parent_li: ET.Element, base_href: str, nodes: list[NavH
         child_ol.append(child_li)
 
     parent_li.append(child_ol)
+
+
+def _append_ncx_children(
+    parent_nav_point: ET.Element,
+    base_href: str,
+    nodes: list[NavHeading],
+    id_counter: itertools.count,
+) -> None:
+    for node in nodes:
+        child = ET.SubElement(parent_nav_point, f"{NCX}navPoint", {"id": f"navPoint-{next(id_counter)}"})
+        nav_label = ET.SubElement(child, f"{NCX}navLabel")
+        text_elem = ET.SubElement(nav_label, f"{NCX}text")
+        text_elem.text = node.plain_text or node.lead_text or node.identifier
+        ET.SubElement(child, f"{NCX}content", {"src": f"{base_href}#{node.identifier}"})
+        if node.subsections:
+            _append_ncx_children(child, base_href, node.subsections, id_counter)
+
+
+REDUNDANT_NAV_TITLES = {"table of contents"}
+NAV_TITLE_COMMENT_PREFIX = "nav-title:"
+
+
+def _extract_nav_title_marker(root: ET.Element) -> str | None:
+    for elem in root.iter():
+        if elem.tag is ET.Comment:
+            text = (elem.text or "").strip()
+            if text.lower().startswith(NAV_TITLE_COMMENT_PREFIX):
+                return text[len(NAV_TITLE_COMMENT_PREFIX):].strip()
+        nav_attr = (elem.attrib.get("data-nav-title") or "").strip()
+        if nav_attr:
+            return nav_attr
+    return None
 
 
 def _serialize_nav_tree(root: ET.Element) -> str:
@@ -1052,8 +1163,9 @@ def _load_heading_content(
         cache[href] = None
         return None
 
+    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
     try:
-        root = ET.fromstring(data)
+        root = ET.fromstring(data, parser=parser)
     except ET.ParseError:
         cache[href] = None
         return None
@@ -1065,6 +1177,7 @@ def _load_heading_content(
         for parent in root.iter()
         for child in list(parent)
     }
+    nav_title = _extract_nav_title_marker(root)
     main_heading: HeadingContent | None = None
     subheadings: list[NavHeading] = []
     stack: list[tuple[int, list[NavHeading]]] = [(1, subheadings)]
@@ -1112,6 +1225,25 @@ def _load_heading_content(
         stack[-1][1].append(nav_heading)
         stack.append((level, nav_heading.subsections))
 
+    if main_heading is None and subheadings:
+        promoted = subheadings.pop(0)
+        merged_children = list(promoted.subsections)
+        merged_children.extend(subheadings)
+        main_heading = HeadingContent(
+            lead_text=promoted.lead_text,
+            children=promoted.children,
+            plain_text=promoted.plain_text,
+            subheadings=merged_children,
+        )
+
+    if main_heading is None and nav_title:
+        main_heading = HeadingContent(
+            lead_text=nav_title,
+            children=[],
+            plain_text=nav_title,
+            subheadings=subheadings,
+        )
+
     if main_heading is None:
         main_heading = HeadingContent(
             lead_text="",
@@ -1156,14 +1288,16 @@ def _augment_nav_with_missing_chapters(
         return nav_text, 0
 
     existing: dict[str, ET.Element] = {}
+    original_children = [ET.tostring(li, encoding="unicode", method="xml") for li in list(ol)]
     max_id = 0
     for li in list(ol):
         anchor = li.find(f"{XHTML}a")
         if anchor is None:
             continue
-        href = anchor.get("href")
-        if href:
-            existing[href] = li
+        href = anchor.get("href") or ""
+        base_href = href.split("#", 1)[0]
+        if base_href:
+            existing.setdefault(base_href, li)
         ident = li.get("id")
         if ident:
             match = re.search(r"(\d+)$", ident)
@@ -1171,47 +1305,61 @@ def _augment_nav_with_missing_chapters(
                 max_id = max(max_id, int(match.group(1)))
 
     present = set(existing.keys())
-    missing_titles: list[str] = []
-    added = 0
     chapter_hrefs = [href for href in spine_hrefs if _is_chapter_href(href)]
+    id_counter = itertools.count(max_id + 1)
+    new_children: list[ET.Element] = []
+    missing_titles: list[str] = []
 
-    for idx, href in enumerate(chapter_hrefs):
-        if href in present:
-            continue
+    for href in chapter_hrefs:
         heading = _load_heading_content(zf, href, heading_cache)
-        if not heading:
-            missing_titles.append(href)
-            continue
-
-        max_id += 1
-        li = ET.Element(f"{XHTML}li", {"id": f"toc-li-{max_id}"})
-        anchor = ET.SubElement(li, f"{XHTML}a", {"href": href})
-        _populate_anchor_from_heading(anchor, heading)
-        _append_nav_children(li, href, heading.subheadings)
-
-        next_href = None
-        for candidate in chapter_hrefs[idx + 1:]:
-            if candidate in present:
-                next_href = candidate
-                break
-
-        if next_href:
-            _insert_before(ol, li, existing[next_href])
+        next_id = next(id_counter)
+        li: ET.Element
+        if heading:
+            li = ET.Element(f"{XHTML}li", {"id": f"toc-li-{next_id}"})
+            anchor = ET.SubElement(li, f"{XHTML}a", {"href": href})
+            _populate_anchor_from_heading(anchor, heading)
+            heading_text = (heading.plain_text or "").strip().lower()
+            if heading_text not in REDUNDANT_NAV_TITLES:
+                _append_nav_children(li, href, heading.subheadings)
         else:
-            ol.append(li)
+            missing_titles.append(href)
+            source = existing.get(href)
+            if source is not None:
+                li = copy.deepcopy(source)
+            else:
+                li = ET.Element(f"{XHTML}li")
+            li.set("id", f"toc-li-{next_id}")
+            anchor = li.find(f"{XHTML}a")
+            if anchor is None:
+                anchor = ET.SubElement(li, f"{XHTML}a", {"href": href})
+            if not anchor.get("href"):
+                anchor.set("href", href)
+            if "".join(anchor.itertext()).strip() == "":
+                anchor.text = href
+        new_children.append(li)
 
-        existing[href] = li
-        present.add(href)
-        added += 1
+    if not new_children:
+        return nav_text, 0
+
+    new_serialized = [ET.tostring(li, encoding="unicode", method="xml") for li in new_children]
+    if original_children == new_serialized:
+        if missing_titles:
+            print(
+                f"-- Warning: unable to infer nav titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
+            )
+        return nav_text, 0
+
+    for child in list(ol):
+        ol.remove(child)
+    for li in new_children:
+        ol.append(li)
 
     if missing_titles:
         print(
             f"-- Warning: unable to infer nav titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
         )
 
-    if added == 0:
-        return nav_text, 0
-
+    added = len([href for href in chapter_hrefs if href not in present])
     return _serialize_nav_tree(root), added
 
 
@@ -1235,14 +1383,16 @@ def _augment_ncx_with_missing_chapters(
         return toc_text, 0
 
     existing: dict[str, ET.Element] = {}
+    original_children = [ET.tostring(nav_point, encoding="unicode", method="xml") for nav_point in list(nav_map)]
     max_id = 0
     for nav_point in list(nav_map):
         content = nav_point.find(f"{NCX}content")
         if content is None:
             continue
-        src = content.get("src")
-        if src:
-            existing[src] = nav_point
+        src = content.get("src") or ""
+        base_href = src.split("#", 1)[0]
+        if base_href:
+            existing.setdefault(base_href, nav_point)
         ident = nav_point.get("id")
         if ident:
             match = re.search(r"(\d+)$", ident)
@@ -1250,48 +1400,67 @@ def _augment_ncx_with_missing_chapters(
                 max_id = max(max_id, int(match.group(1)))
 
     present = set(existing.keys())
-    added = 0
-    missing_titles: list[str] = []
     chapter_hrefs = [href for href in spine_hrefs if _is_chapter_href(href)]
+    id_counter = itertools.count(max_id + 1)
+    new_points: list[ET.Element] = []
+    missing_titles: list[str] = []
 
-    for idx, href in enumerate(chapter_hrefs):
-        if href in present:
-            continue
+    for href in chapter_hrefs:
         heading = _load_heading_content(zf, href, heading_cache)
-        if not heading:
-            missing_titles.append(href)
-            continue
-
-        max_id += 1
-        nav_point = ET.Element(f"{NCX}navPoint", {"id": f"navPoint-{max_id}"})
-        nav_label = ET.SubElement(nav_point, f"{NCX}navLabel")
-        text_elem = ET.SubElement(nav_label, f"{NCX}text")
-        text_elem.text = heading.plain_text
-        ET.SubElement(nav_point, f"{NCX}content", {"src": href})
-
-        next_href = None
-        for candidate in chapter_hrefs[idx + 1:]:
-            if candidate in present:
-                next_href = candidate
-                break
-
-        if next_href:
-            _insert_before(nav_map, nav_point, existing[next_href])
+        next_id = next(id_counter)
+        if heading:
+            nav_point = ET.Element(f"{NCX}navPoint", {"id": f"navPoint-{next_id}"})
+            nav_label = ET.SubElement(nav_point, f"{NCX}navLabel")
+            text_elem = ET.SubElement(nav_label, f"{NCX}text")
+            text_elem.text = heading.plain_text or Path(href).stem
+            ET.SubElement(nav_point, f"{NCX}content", {"src": href})
+            heading_text = (heading.plain_text or "").strip().lower()
+            if heading_text not in REDUNDANT_NAV_TITLES:
+                _append_ncx_children(nav_point, href, heading.subheadings, id_counter)
         else:
-            nav_map.append(nav_point)
+            missing_titles.append(href)
+            source = existing.get(href)
+            if source is not None:
+                nav_point = copy.deepcopy(source)
+            else:
+                nav_point = ET.Element(f"{NCX}navPoint")
+            nav_point.set("id", f"navPoint-{next_id}")
+            nav_label = nav_point.find(f"{NCX}navLabel")
+            if nav_label is None:
+                nav_label = ET.SubElement(nav_point, f"{NCX}navLabel")
+            text_elem = nav_label.find(f"{NCX}text")
+            if text_elem is None:
+                text_elem = ET.SubElement(nav_label, f"{NCX}text")
+            if not (text_elem.text or "").strip():
+                text_elem.text = href
+            content = nav_point.find(f"{NCX}content")
+            if content is None:
+                content = ET.SubElement(nav_point, f"{NCX}content")
+            content.set("src", href)
+        new_points.append(nav_point)
 
-        existing[href] = nav_point
-        present.add(href)
-        added += 1
+    if not new_points:
+        return toc_text, 0
+
+    new_serialized = [ET.tostring(nav_point, encoding="unicode", method="xml") for nav_point in new_points]
+    if original_children == new_serialized:
+        if missing_titles:
+            print(
+                f"-- Warning: unable to infer NCX titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
+            )
+        return toc_text, 0
+
+    for child in list(nav_map):
+        nav_map.remove(child)
+    for nav_point in new_points:
+        nav_map.append(nav_point)
 
     if missing_titles:
         print(
             f"-- Warning: unable to infer NCX titles for {len(missing_titles)} chapters: {_format_missing_targets(missing_titles)}"
         )
 
-    if added == 0:
-        return toc_text, 0
-
+    added = len([href for href in chapter_hrefs if href not in present])
     return _serialize_xml_tree(root), added
 
 
@@ -1305,6 +1474,7 @@ def repair_epub_navigation(epub_path: Path) -> None:
     toc_updated: str | None = None
     nav_fixes = toc_fixes = 0
     nav_added = toc_added = 0
+    nav_changed = toc_changed = False
     missing_ids: set[str] = set()
 
     try:
@@ -1338,6 +1508,7 @@ def repair_epub_navigation(epub_path: Path) -> None:
                     spine_hrefs,
                     heading_cache,
                 )
+                nav_changed = nav_raw != nav_updated
 
             if toc_raw:
                 toc_updated, toc_fixes, missing = _rewrite_internal_refs(toc_raw, NCX_LINK_PATTERN, id_targets)
@@ -1348,11 +1519,12 @@ def repair_epub_navigation(epub_path: Path) -> None:
                     spine_hrefs,
                     heading_cache,
                 )
+                toc_changed = toc_raw != toc_updated
     except zipfile.BadZipFile:
         print("-- Unable to inspect EPUB archive; skipping nav/toc repair.")
         return
 
-    if (nav_fixes + toc_fixes + nav_added + toc_added) == 0:
+    if (nav_fixes + toc_fixes + nav_added + toc_added) == 0 and not nav_changed and not toc_changed:
         if missing_ids:
             print(f"-- Warning: {len(missing_ids)} nav/toc ids missing chapter targets: {sorted(missing_ids)[:5]}...")
         return
@@ -1362,10 +1534,14 @@ def repair_epub_navigation(epub_path: Path) -> None:
         print(f"-- Updated {nav_fixes} entries in nav.xhtml")
     if nav_added:
         print(f"-- Added {nav_added} missing chapters to nav.xhtml")
+    if nav_changed and not (nav_fixes or nav_added):
+        print("-- Rebuilt nav.xhtml to match spine order")
     if toc_fixes:
         print(f"-- Updated {toc_fixes} entries in toc.ncx")
     if toc_added:
         print(f"-- Added {toc_added} missing chapters to toc.ncx")
+    if toc_changed and not (toc_fixes or toc_added):
+        print("-- Rebuilt toc.ncx to match spine order")
     if missing_ids:
         print(f"-- Warning: unable to resolve targets for {len(missing_ids)} ids: {sorted(missing_ids)[:5]}...")
 
@@ -1543,6 +1719,7 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
 
     cmd += ["-o", str(out_path)]
     run(cmd)
+    update_page_count_cache(out_path, pdfmode or "screen")
 
 def build_pdf_debug(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build only debug.tex (LaTeX) for inspection."""

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -10,11 +13,157 @@ from .background_palettes import select_luma_offset
 
 CSS_OVERRIDE_NAME = "layout-overrides.css"
 PDF_OVERRIDE_NAME = "pdf-layout-overrides.tex"
+PAGE_COUNT_CACHE_NAME = "pdf-page-counts.json"
 
 _DEFAULT_SCREEN_GEOMETRY = "margin=1.1in, twoside=false"
 _DEFAULT_PRINT_GEOMETRY = (
-    "inner=1.05in, outer=0.85in, top=0.95in, bottom=0.95in, bindingoffset=0.18in, twoside=true"
+    "inner=0.5in, outer=0.5in, top=0.75in, bottom=0.75in, bindingoffset=0.375in, twoside=true"
 )
+
+_MEASURE_PATTERN = re.compile(r"^\s*([+-]?\d+(?:\.\d+)?)([a-zA-Z]*)\s*$")
+_UNIT_FACTORS = {
+    "in": 1.0,
+    "": 1.0,
+    "pt": 1.0 / 72.27,
+    "cm": 1.0 / 2.54,
+    "mm": 1.0 / 25.4,
+}
+
+_KDP_PAGE_RANGES: tuple[tuple[int, float], ...] = (
+    (150, 0.375),
+    (300, 0.5),
+    (500, 0.625),
+    (700, 0.75),
+    (828, 0.875),
+)
+
+
+def _parse_inches(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    match = _MEASURE_PATTERN.match(text)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = match.group(2).lower()
+    factor = _UNIT_FACTORS.get(unit)
+    if factor is None:
+        return None
+    return number * factor
+
+
+def _format_inches(value: float) -> str:
+    return f"{value:.4f}".rstrip("0").rstrip(".") + "in"
+
+
+def _kdp_inner_target(page_count: int) -> float:
+    if page_count <= 0:
+        return _KDP_PAGE_RANGES[0][1]
+    for limit, size in _KDP_PAGE_RANGES:
+        if page_count <= limit:
+            return size
+    extra = page_count - _KDP_PAGE_RANGES[-1][0]
+    increments = int(math.ceil(extra / 200.0))
+    return _KDP_PAGE_RANGES[-1][1] + (increments * 0.125)
+
+
+def _read_cached_page_counts(build_dir: Path) -> dict[str, Any]:
+    cache_path = build_dir / PAGE_COUNT_CACHE_NAME
+    if not cache_path.exists():
+        return {}
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _geometry_string_from_spec(spec: dict[str, str]) -> str:
+    keys = ["inner", "outer", "top", "bottom", "bindingoffset"]
+    parts = [f"{key}={spec[key]}" for key in keys if key in spec and spec[key]]
+    parts.append("twoside=true")
+    return ", ".join(parts)
+
+
+def _resolve_kdp_geometry(
+    margins: dict[str, Any],
+    kdp_config: dict[str, Any],
+    page_counts: dict[str, Any],
+) -> str | None:
+    enabled = _config_bool(kdp_config.get("enabled"), True)
+    if not enabled:
+        return None
+
+    explicit = _config_int(kdp_config.get("page_count"), 0, minimum=0)
+    if explicit <= 0:
+        explicit = _config_int(kdp_config.get("page_count_estimate"), 0, minimum=0)
+
+    if explicit <= 0:
+        source = str(kdp_config.get("page_count_source") or "print").strip().lower()
+        cached = page_counts.get(source)
+        if isinstance(cached, dict):
+            explicit = _config_int(cached.get("pages"), 0, minimum=0)
+        elif isinstance(cached, (int, float)):
+            explicit = _config_int(cached, 0, minimum=0)
+
+    if explicit <= 0:
+        explicit = _config_int(kdp_config.get("fallback_page_count"), 0, minimum=0)
+
+    if explicit <= 0:
+        print("-- Warning: KDP margin profile enabled but no page count is available; falling back to static margins.")
+        return None
+
+    bleed = _config_bool(kdp_config.get("bleed"), False)
+
+    outer = (
+        _parse_inches(margins.get("outer"))
+        or _parse_inches(kdp_config.get("outer"))
+        or (0.375 if bleed else 0.25)
+    )
+    top = (
+        _parse_inches(margins.get("top"))
+        or _parse_inches(kdp_config.get("top"))
+        or (0.375 if bleed else 0.25)
+    )
+    bottom = (
+        _parse_inches(margins.get("bottom"))
+        or _parse_inches(kdp_config.get("bottom"))
+        or (0.375 if bleed else 0.25)
+    )
+
+    base_inner = (
+        _parse_inches(kdp_config.get("base_inner"))
+        or _parse_inches(margins.get("inner"))
+        or outer
+    )
+
+    min_binding = (
+        _parse_inches(kdp_config.get("min_bindingoffset"))
+        or _parse_inches(margins.get("bindingoffset"))
+        or 0.0
+    )
+    max_binding = _parse_inches(kdp_config.get("max_bindingoffset"))
+
+    target_inner = _kdp_inner_target(explicit)
+
+    inner_value = max(base_inner, target_inner)
+    bindingoffset = max(min_binding, 0.0)
+    if max_binding is not None:
+        bindingoffset = min(bindingoffset, max_binding)
+
+    spec = {
+        "inner": _format_inches(inner_value),
+        "outer": _format_inches(outer),
+        "top": _format_inches(top),
+        "bottom": _format_inches(bottom),
+        "bindingoffset": _format_inches(bindingoffset),
+    }
+    return _geometry_string_from_spec(spec)
 
 
 def _section(name: str) -> dict[str, Any]:
@@ -244,19 +393,39 @@ def _pdf_font_name(stack: list[str]) -> str | None:
 
 
 def _screen_geometry(margins: dict[str, Any]) -> str:
-    margin = str(
-        margins.get("outer")
-        or margins.get("inner")
-        or margins.get("top")
-        or margins.get("margin")
-        or ""
-    ).strip()
-    if not margin:
-        return _DEFAULT_SCREEN_GEOMETRY
-    return f"margin={margin}, twoside=false"
+    """Return screen-friendly geometry settings.
+
+    Screen layouts ignore print-specific inner/outer bindings unless the user
+    explicitly provides a screen override so that tightening print margins
+    does not accidentally shrink the reading experience.
+    """
+
+    for key in (
+        "screen",
+        "screen_margin",
+        "screen_all",
+        "screen_margin_all",
+    ):
+        value = margins.get(key)
+        if value:
+            text = str(value).strip()
+            if text:
+                return f"margin={text}, twoside=false"
+
+    margin = str(margins.get("margin") or "").strip()
+    if margin:
+        return f"margin={margin}, twoside=false"
+
+    return _DEFAULT_SCREEN_GEOMETRY
 
 
-def _print_geometry(margins: dict[str, Any]) -> str:
+def _print_geometry(margins: dict[str, Any], page_counts: dict[str, Any]) -> str:
+    kdp_config = margins.get("kdp")
+    if isinstance(kdp_config, dict):
+        spec = _resolve_kdp_geometry(margins, kdp_config, page_counts)
+        if spec:
+            return spec
+
     parts: list[str] = []
     for key in ("inner", "outer", "top", "bottom"):
         value = margins.get(key)
@@ -267,7 +436,11 @@ def _print_geometry(margins: dict[str, Any]) -> str:
             parts.append(f"{key}={text}")
     if not parts:
         return _DEFAULT_PRINT_GEOMETRY
-    parts.append("bindingoffset=0.18in")
+
+    binding_value = str(margins.get("bindingoffset") or "").strip()
+    if not binding_value:
+        binding_value = "0.18in"
+    parts.append(f"bindingoffset={binding_value}")
     parts.append("twoside=true")
     return ", ".join(parts)
 
@@ -375,7 +548,7 @@ def _write_pdf_override(
     mono_font = _pdf_font_name(_normalize_font_stack(fonts.get("mono")))
 
     screen_geometry = _screen_geometry(margins)
-    print_geometry = _print_geometry(margins)
+    print_geometry = _print_geometry(margins, _read_cached_page_counts(path.parent))
 
     lines: list[str] = []
     lines.append("% Auto-generated from iasp-config. Do not edit manually.")

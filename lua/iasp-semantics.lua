@@ -1982,8 +1982,12 @@ local NOTE_VARIANTS = {
   "warning",
   "breadcrumb",
   "contrast",
+  "transition",
   "navigation",
   "bridge",
+  "usage",
+  "synthesis",
+  "disclosure",
   "misuse",
   "diagnostic",
   "closing",
@@ -2008,6 +2012,42 @@ local function chapter_page_break_block(format_hint)
   end
 
   return nil
+end
+
+local function apply_pagebreak_wrappers(blocks, wants_pre, wants_post, format_hint)
+  if not wants_pre and not wants_post then
+    return blocks
+  end
+  if not blocks then
+    return blocks
+  end
+
+  local wrapped = {}
+
+  local function append_break()
+    local breaker = chapter_page_break_block(format_hint)
+    if breaker then
+      table.insert(wrapped, breaker)
+    end
+  end
+
+  if wants_pre then
+    append_break()
+  end
+
+  for _, block in ipairs(blocks) do
+    table.insert(wrapped, block)
+  end
+
+  if wants_post then
+    append_break()
+  end
+
+  if #wrapped == 0 then
+    return blocks
+  end
+
+  return wrapped
 end
 
 note_variant = function(div)
@@ -2159,11 +2199,22 @@ local function handle_div(div)
 
   local format_hint = (FORMAT or ""):lower()
   local manual_page_break = has_class(div, "page-break") or has_class(div, "pagebreak")
+  local wants_pre_pagebreak = has_class(div, "pre-pagebreak") or has_class(div, "pagebreak-before") or has_class(div, "prepagebreak")
+  local wants_post_pagebreak = has_class(div, "post-pagebreak") or has_class(div, "pagebreak-after") or has_class(div, "postpagebreak")
+  local has_fullpage_layout = has_class(div, "layout-fullpage")
+    or has_class(div, "layout_fullpage")
+    or has_class(div, "layout-full-page")
+
   if manual_page_break then
     local breaker = chapter_page_break_block(format_hint)
     if breaker then
       return { breaker }
     end
+  end
+
+  if has_fullpage_layout then
+    wants_pre_pagebreak = true
+    wants_post_pagebreak = true
   end
 
   local has_sidebar_semantics = has_epub_type(div.attributes, "aside") or has_epub_type(div.attributes, "sidebar")
@@ -2235,6 +2286,9 @@ local function handle_div(div)
 
   local is_latex = FORMAT:match("latex") ~= nil
   if not is_latex then
+    if wants_pre_pagebreak or wants_post_pagebreak then
+      return apply_pagebreak_wrappers({ div }, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
+    end
     return mutated and div or nil
   end
 
@@ -2246,10 +2300,11 @@ local function handle_div(div)
       table.insert(out, pandoc.RawBlock("latex", "\\iaspSetPartHeader{Appendices}"))
     end
     table.insert(out, div)
-    return out
+    return apply_pagebreak_wrappers(out, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "part") then
+    wants_pre_pagebreak = true
     local blocks = wrap_in_env(div, "parttitlepage")
     local heading_text = primary_part_heading_text(div)
     if heading_text and heading_text ~= "" then
@@ -2257,15 +2312,16 @@ local function handle_div(div)
         pandoc.RawBlock("latex", "\\iaspSetPartHeader{" .. latex_escape_argument(heading_text) .. "}\\relax\n")
       )
     end
-    return blocks
+    return apply_pagebreak_wrappers(blocks, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "bridge") then
-    return wrap_in_env(div, "bridgeheadblock")
+    local blocks = wrap_in_env(div, "bridgeheadblock")
+    return apply_pagebreak_wrappers(blocks, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "callout") then
-    return wrap_in_env(div, "calloutbox")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "calloutbox"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "note") then
@@ -2280,6 +2336,14 @@ local function handle_div(div)
       env = "noteboxnavigation"
     elseif variant == "bridge" then
       env = "noteboxbridge"
+    elseif variant == "usage" then
+      env = "noteboxusage"
+    elseif variant == "transition" then
+      env = "noteboxtransition"
+    elseif variant == "synthesis" then
+      env = "noteboxsynthesis"
+    elseif variant == "disclosure" then
+      env = "noteboxdisclosure"
     elseif variant == "misuse" then
       env = "noteboxmisuse"
     elseif variant == "diagnostic" then
@@ -2293,31 +2357,35 @@ local function handle_div(div)
     else
       env = "notebox"
     end
-    return wrap_in_env(div, env)
+    return apply_pagebreak_wrappers(wrap_in_env(div, env), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "example") then
-    return wrap_in_env(div, "examplebox")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "examplebox"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "definition") then
-    return wrap_in_env(div, "definitionbox")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "definitionbox"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "epigraph") then
-    return wrap_in_env(div, "epigraph")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "epigraph"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "epigraph-inline") then
-    return wrap_in_env(div, "epigraphtight")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "epigraphtight"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if is_sidebar_inline then
-    return wrap_in_env(div, "sidebartight")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "sidebartight"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_sidebar_semantics then
-    return wrap_in_env(div, "sidebar")
+    return apply_pagebreak_wrappers(wrap_in_env(div, "sidebar"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
+  end
+
+  if wants_pre_pagebreak or wants_post_pagebreak then
+    return apply_pagebreak_wrappers({ div }, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   return mutated and div or nil

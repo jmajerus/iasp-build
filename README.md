@@ -60,7 +60,7 @@ To keep `build_book.py` focused on orchestration, helper modules live in `iasp_t
 - `snapshot_renderer.py` – turns the walker output into Markdown via the `SnapshotEntry` dataclass. Augment this file if you need alternate renderers (HTML, JSON) or formatting tweaks for the canonical-order report.
 - `slot_manager.py` – updates standardized `<!-- SLOT:NAME:START/END -->` markers inside Markdown or other text files. Use it whenever a script needs to splice generated content into an existing document.
 
-Top-level CLIs (e.g., `build_book.py`, `generate_order_snapshot.py`) should only glue these modules together plus perform argument parsing. When adding new functionality, first decide whether it belongs in one of the modules above; if not, spin up another purpose-built module under `lib/` and keep the entry point thin.
+Top-level CLIs (e.g., `build_book.py`, `iasp_tooling/scripts/generate_order_snapshot.py`) should only glue these modules together plus perform argument parsing. When adding new functionality, first decide whether it belongs in one of the modules above; if not, spin up another purpose-built module under `lib/` and keep the entry point thin.
 
 ------
 
@@ -99,7 +99,7 @@ reference the fresh values without manual edits.
 
 ### Canonical order snapshot
 
-The root-level `generate_order_snapshot.py` script renders whatever `order_file`
+The `iasp_tooling/scripts/generate_order_snapshot.py` script renders whatever `order_file`
 the active profile resolves to as a Markdown outline (`build/book-order.generated.md`
 for the flagship profile, `build/annexes/<profile>/book-order.generated.md` for
 annexes). `build_book.py` runs the generator before every profile-based build so
@@ -110,7 +110,7 @@ so Appendix W-style catalogs display their nested entries inline. Invoke the
 script directly when you just need to refresh the snapshot:
 
 ```bash
-python3 generate_order_snapshot.py --order book-order.txt --max-depth 2
+python3 iasp_tooling/scripts/generate_order_snapshot.py --order book-order.txt --max-depth 2
 ```
 
 Use `--max-depth` to control how many include layers are expanded (defaults to

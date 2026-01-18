@@ -16,6 +16,15 @@
 \usepackage{fvextra} % allow breaklines for Pandoc's Verbatim blocks
 \usepackage{framed}
 \fvset{breaklines=true,breakanywhere=true}
+\csname tracinglostchars\endcsname=1
+
+\providecommand{\BodyFontFamily}{TeX Gyre Pagella}
+\providecommand{\HeadingFontFamily}{TeX Gyre Pagella}
+\providecommand{\MonoFontFamily}{Inconsolata}
+\providecommand{\MonoFontFallbackA}{TeX Gyre Cursor}
+\providecommand{\MonoFontFallbackB}{DejaVu Sans Mono}
+\providecommand{\ScreenGeometryOptions}{margin=1.1in, twoside=false}
+\providecommand{\PrintGeometryOptions}{inner=0.5in, outer=0.5in, top=0.75in, bottom=0.75in, bindingoffset=0.375in, twoside=true}
 
 % Provide fallback Highlighting/Shaded environments if Pandoc's template omits them
 \makeatletter
@@ -61,7 +70,39 @@
 % --------------------------------------------------
 % Font configuration (XeLaTeX)
 % --------------------------------------------------
-\setmainfont{TeX Gyre Pagella}
+\newif\ifiaspMonoFontChosen
+\iaspMonoFontChosenfalse
+
+\newcommand{\iaspTrySetMonoFont}[1]{%%
+  \ifiaspMonoFontChosen
+  \else
+    \IfFontExistsTF{#1}{%%
+      \setmonofont{#1}%%
+      \iaspMonoFontChosentrue%%
+    }{}
+  \fi
+}
+
+\newcommand{\iaspSetMonospacedFont}{%%
+  \iaspMonoFontChosenfalse%%
+  \iaspTrySetMonoFont{\MonoFontFamily}%%
+  \ifiaspMonoFontChosen
+  \else
+    \PackageWarningNoLine{iasp-fonts}{Mono font '\MonoFontFamily' missing; trying fallbacks.}%%
+    \iaspTrySetMonoFont{\MonoFontFallbackA}%%
+    \iaspTrySetMonoFont{\MonoFontFallbackB}%%
+  \fi
+  \ifiaspMonoFontChosen
+  \else
+    \PackageWarningNoLine{iasp-fonts}{No configured mono font found; falling back to 'Latin Modern Mono'.}%%
+    \setmonofont{Latin Modern Mono}%%
+  \fi
+}
+
+\setmainfont{\BodyFontFamily}
+\newfontfamily\HeadingFont{\HeadingFontFamily}
+\iaspSetMonospacedFont
+
 
 \newcommand{\setnoteglyphfont}{%
   \IfFontExistsTF{Noto Color Emoji}{%
@@ -80,11 +121,30 @@
 }
 \setnoteglyphfont
 
+\newcommand{\setcheckboxfont}{%
+  \IfFontExistsTF{Libertinus Serif}{%
+    \newfontfamily\checkboxfont{Libertinus Serif}[Scale=MatchLowercase]%
+  }{%
+    \IfFontExistsTF{Libertinus Serif Regular}{%
+      \newfontfamily\checkboxfont{Libertinus Serif Regular}[Scale=MatchLowercase]%
+    }{%
+      \IfFontExistsTF{STIX Two Text}{%
+        \newfontfamily\checkboxfont{STIX Two Text}[Scale=MatchLowercase]%
+      }{%
+        \newfontfamily\checkboxfont{DejaVu Sans}[Scale=MatchLowercase]%
+      }%
+    }%
+  }%
+}
+\setcheckboxfont
+
 \newcommand{\emojiFallback}[1]{{\noteglyphfont\symbol{#1}}}
 \newunicodechar{📺}{\emojiFallback{"1F4FA}}
 \newunicodechar{🌐}{\emojiFallback{"1F310}}
 \newunicodechar{📘}{\emojiFallback{"1F4D8}}
 \newunicodechar{⭐}{\emojiFallback{"2B50}}
+\newunicodechar{☐}{{\checkboxfont\symbol{"2610}}}
+\newunicodechar{☑}{{\checkboxfont\symbol{"2611}}}
 
 \newcommand{\sectionheadingglyph}[1]{%%
   \llap{{\noteglyphfont #1}\hspace{0.6em}}%%
@@ -136,17 +196,10 @@
 % --------------------------------------------------
 \ifthenelse{\boolean{isprint}}{%%
   % Print-optimized: asymmetric margins for binding + mirrored layout
-  \usepackage[
-    inner=1.05in,
-    outer=0.85in,
-    top=0.95in,
-    bottom=0.95in,
-    bindingoffset=0.18in,
-    twoside=true
-  ]{geometry}%%
+  \usepackage[\PrintGeometryOptions]{geometry}%%
 }{%%
   % Screen-optimized: a bit more generous margins, single-sided
-  \usepackage[margin=1.1in, twoside=false]{geometry}%%
+  \usepackage[\ScreenGeometryOptions]{geometry}%%
 }
 \usepackage{microtype} % nicer text spacing
 
@@ -165,6 +218,27 @@
 \newcommand{\iaspSetPartHeader}[1]{%%
   \gdef\iaspPartHeaderText{#1}%%
   \iaspParthasvaluetrue%%
+}
+
+\newcommand{\iaspClearPartHeader}{%%
+  \gdef\iaspPartHeaderText{}%%
+  \iaspParthasvaluefalse%%
+}
+
+\newif\ifiaspNextPartHeaderPending
+\iaspNextPartHeaderPendingfalse
+\newcommand{\iaspNextPartHeaderText}{}
+
+\newcommand{\iaspSetNextPartHeader}[1]{%%
+  \gdef\iaspNextPartHeaderText{#1}%%
+  \iaspNextPartHeaderPendingtrue%%
+}
+
+\newcommand{\iaspApplyNextPartHeader}{%%
+  \ifiaspNextPartHeaderPending
+    \iaspSetPartHeader{\iaspNextPartHeaderText}%%
+    \iaspNextPartHeaderPendingfalse%%
+  \fi
 }
 
 \newcommand{\iaspRunningHeadSource}{%%
@@ -238,11 +312,34 @@
 \newcommand{\iaspLastChapterMark}{}
 \newcommand{\iaspLastSectionMark}{}
 
+\newif\ifiaspChapterMarkOverridePending
+\iaspChapterMarkOverridePendingfalse
+\newcommand{\iaspChapterMarkOverrideText}{}
+
+\newcommand{\iaspSetNextChapterRunningHead}[1]{%%
+  \gdef\iaspChapterMarkOverrideText{#1}%%
+  \iaspChapterMarkOverridePendingtrue%%
+}
+
+\newcommand{\iaspSetRunningHeadNow}[1]{%%
+  \iaspSetPartHeader{#1}%%
+  \gdef\iaspLastChapterMark{\unexpanded{#1}}%%
+  \markboth{\unexpanded{#1}}{}%%
+  \iaspChapterMarkSeentrue%%
+}
+
 % Use chapter titles for \leftmark (no section marks in header)
 \renewcommand{\chaptermark}[1]{%%
-  \gdef\iaspLastChapterMark{#1}%%
+  \iaspApplyNextPartHeader%% ensure deferred part headers activate after the prior page flushes
+  \ifiaspChapterMarkOverridePending%%
+    \gdef\iaspLastChapterMark{\unexpanded{\iaspChapterMarkOverrideText}}%%
+    \markboth{\unexpanded{\iaspChapterMarkOverrideText}}{}%%
+    \iaspChapterMarkOverridePendingfalse%%
+  \else%%
+    \gdef\iaspLastChapterMark{\unexpanded{#1}}%%
+    \markboth{\unexpanded{#1}}{}%%
+  \fi%%
   \iaspChapterMarkSeentrue%%
-  \markboth{#1}{}%%
 }
 \renewcommand{\sectionmark}[1]{%%
   \gdef\iaspLastSectionMark{#1}%%
@@ -335,7 +432,7 @@
 % Shown on their own page, big and centered
 \titleformat{\part}
   [display]
-  {\centering\Huge\bfseries}
+  {\centering\HeadingFont\Huge\bfseries}
   {\partname~\thepart}
   {1ex}
   {}
@@ -349,7 +446,7 @@
 % Adjusted for a clean, book-like start
 \titleformat{\chapter}
   [display]
-  {\normalfont\LARGE\bfseries}
+  {\HeadingFont\LARGE\bfseries}
   {\chaptername~\thechapter}
   {1ex}
   {}
@@ -361,13 +458,13 @@
 
 % SECTIONS (for your h2 / h3 hierarchy)
 \titleformat{\section}
-  {\normalfont\Large\bfseries}
+  {\HeadingFont\Large\bfseries}
   {\thesection}
   {0.5em}
   {}
 
 \titleformat{\subsection}
-  {\normalfont\large\bfseries}
+  {\HeadingFont\large\bfseries}
   {\thesubsection}
   {0.5em}
   {}
@@ -421,10 +518,18 @@
 \definecolor{noteboxwarningline}{HTML}{C05621}
 \definecolor{noteboxcontrastbg}{HTML}{F4EBFF}
 \definecolor{noteboxcontrastline}{HTML}{7E3AF2}
+\definecolor{noteboxtransitionbg}{HTML}{EAF2FF}
+\definecolor{noteboxtransitionline}{HTML}{2563EB}
 \definecolor{noteboxnavigationbg}{HTML}{E6F6F7}
 \definecolor{noteboxnavigationline}{HTML}{0F6B75}
 \definecolor{noteboxbridgebg}{HTML}{F4F0FF}
 \definecolor{noteboxbridgeline}{HTML}{6F58B9}
+\definecolor{noteboxusagebg}{HTML}{EEF4FA}
+\definecolor{noteboxusageline}{HTML}{3B6EA8}
+\definecolor{noteboxsynthesisbg}{HTML}{E7F7EF}
+\definecolor{noteboxsynthesisline}{HTML}{2F855A}
+\definecolor{noteboxdisclosurebg}{HTML}{F5EDFF}
+\definecolor{noteboxdisclosureline}{HTML}{A855F7}
 \definecolor{noteboxmisusebg}{HTML}{FFEDEA}
 \definecolor{noteboxmisuseline}{HTML}{B42318}
 \definecolor{noteboxdiagnosticbg}{HTML}{E7F0FF}
@@ -454,10 +559,18 @@
     noteboxwarningline,%%
     noteboxcontrastbg,%%
     noteboxcontrastline,%%
+    noteboxtransitionbg,%%
+    noteboxtransitionline,%%
     noteboxnavigationbg,%%
     noteboxnavigationline,%%
     noteboxbridgebg,%%
     noteboxbridgeline,%%
+    noteboxusagebg,%%
+    noteboxusageline,%%
+    noteboxsynthesisbg,%%
+    noteboxsynthesisline,%%
+    noteboxdisclosurebg,%%
+    noteboxdisclosureline,%%
     noteboxmisusebg,%%
     noteboxmisuseline,%%
     noteboxdiagnosticbg,%%
@@ -475,8 +588,12 @@
 \providecommand{\notebadgebgbreadcrumb}{noteboxbreadcrumbline!18!white}
 \providecommand{\notebadgebgwarning}{noteboxwarningline!15!white}
 \providecommand{\notebadgebgcontrast}{noteboxcontrastline!18!white}
+\providecommand{\notebadgebgtransition}{noteboxtransitionline!18!white}
 \providecommand{\notebadgebgnavigation}{noteboxnavigationline!18!white}
 \providecommand{\notebadgebgbridge}{noteboxbridgeline!18!white}
+\providecommand{\notebadgebgusage}{noteboxusageline!18!white}
+\providecommand{\notebadgebgsynthesis}{noteboxsynthesisline!18!white}
+\providecommand{\notebadgebgdisclosure}{noteboxdisclosureline!18!white}
 \providecommand{\notebadgebgmisuse}{noteboxmisuseline!15!white}
 \providecommand{\notebadgebgdiagnostic}{noteboxdiagnosticline!18!white}
 \providecommand{\notebadgebgclosing}{noteboxclosingline!18!white}

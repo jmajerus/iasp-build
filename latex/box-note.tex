@@ -1,32 +1,10 @@
 % Notes (epub:type="note")
 
-% This file defines the LaTeX rendering for semantic notes:
-%   note
-%   note.idea
-%   note.insight       (minor insight)
-%   note.insight.major (major insight)
-%   note.warning
-%   note.breadcrumb
-%   note.contrast
-%   note.navigation
-%   note.bridge
-%   note.misuse
-%   note.diagnostic
-%   note.closing
-%
-% It is built around a small presentation framework:
-%   \noteheaderinline{glyph}        – inline glyph before first sentence
-%   \noteheaderornament{glyph}      – standalone ornamental row (e.g., ⁂)
-%   \noteheaderbadgenormal{glyph}   – badge strip with neutral note color
-%   \noteheaderbadgewarning{glyph}  – badge strip with warning color
-%
-% The Lua filter inserts:
-%   \notevariantideainline
-%   \notevariantinsight
-%   \notevariantinsightmajor
-%   \notevariant{<variant>}
-%
-% which are mapped here onto the presentation primitives.
+% NOTE: The block below replaces the previous implementation and then halts
+% parsing with \endinput to ignore any legacy content that may remain below.
+
+\RequirePackage{xparse}
+\RequirePackage{expl3}
 
 %--------------------------------------------------------------------
 % Glyphs
@@ -41,8 +19,12 @@
 \newcommand{\glyphwarning}{{\noteglyphfont ※}}  % note.warning (calmer than ⚠)
 \newcommand{\glyphbreadcrumb}{{\noteglyphfont ↗}} % note.breadcrumb (navigational cue)
 \newcommand{\glyphcontrast}{{\noteglyphfont ⇆}}  % note.contrast
+\newcommand{\glyphtransition}{{\noteglyphfont ⇥}}  % note.transition
 \newcommand{\glyphnavigation}{{\noteglyphfont ⇢}} % note.navigation
 \newcommand{\glyphbridge}{{\noteglyphfont ⟷}}   % note.bridge
+\newcommand{\glyphusage}{{\noteglyphfont ⚙}}    % note.usage
+\newcommand{\glyphsynthesis}{{\noteglyphfont ⊕}}   % note.synthesis
+\newcommand{\glyphdisclosure}{{\noteglyphfont ◊}}   % note.disclosure
 \newcommand{\glyphmisuse}{{\noteglyphfont ✕}}    % note.misuse
 \newcommand{\glyphdiagnostic}{{\noteglyphfont 🔍}} % note.diagnostic
 \newcommand{\glyphclosing}{{\noteglyphfont ∎}}   % note.closing
@@ -71,7 +53,6 @@
   \par\nointerlineskip
   \endgroup
 }
-
 
 % 3a. Badge strip header with neutral note color.
 % Major insight (note.insight.major): badge strip aligned to left text edge
@@ -130,6 +111,20 @@
   \endgroup
 }
 
+% 3f. Badge strip header with usage accent color.
+\newcommand{\noteheaderbadgeusage}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgusage}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
 % 3f. Badge strip header with diagnostic accent color.
 \newcommand{\noteheaderbadgediagnostic}[1]{%
   \begingroup
@@ -144,6 +139,33 @@
   \endgroup
 }
 
+% 3g. Badge strip header with synthesis accent color.
+\newcommand{\noteheaderbadgesynthesis}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgsynthesis}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3h. Badge strip header with disclosure accent color.
+\newcommand{\noteheaderbadgedisclosure}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgdisclosure}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
 
 % 3b. Badge strip header with warning note color.
 \newcommand{\noteheaderbadgewarning}[1]{%
@@ -225,6 +247,11 @@
   \noteheaderinline{\glyphcontrast}%
 }
 
+% note.transition → inline flow arrow
+\newcommand{\headernotetransition}{%
+  \noteheaderinline{\glyphtransition}%
+}
+
 % note.navigation → teal navigation badge
 \newcommand{\headernotenavigation}{%
   \noteheaderbadgenavigation{\glyphnavigation}%
@@ -233,6 +260,21 @@
 % note.bridge → lavender badge emphasizing linkage
 \newcommand{\headernotebridge}{%
   \noteheaderbadgebridge{\glyphbridge}%
+}
+
+% note.usage → steel-blue usage badge
+\newcommand{\headernoteusage}{%
+  \noteheaderbadgeusage{\glyphusage}%
+}
+
+% note.synthesis → synthesis badge
+\newcommand{\headernotesynthesis}{%
+  \noteheaderbadgesynthesis{\glyphsynthesis}%
+}
+
+% note.disclosure → disclosure badge
+\newcommand{\headernotedisclosure}{%
+  \noteheaderbadgedisclosure{\glyphdisclosure}%
 }
 
 % note.misuse → assertive red badge
@@ -270,44 +312,24 @@
   \headernoteinsightmajor
 }
 
-% Generic badge for notes where Lua inserts \notevariant{<variant>}:
-% - "warning" → warning badge
-% - anything else → neutral note badge
-\newcommand{\notevariant}[1]{%
-  \ifstrequal{#1}{warning}{%
-    \headernotewarning
-  }{%
-    \ifstrequal{#1}{breadcrumb}{%
-      \headernotebreadcrumb
-    }{%
-      \ifstrequal{#1}{contrast}{%
-        \headernotecontrast
-      }{%
-        \ifstrequal{#1}{navigation}{%
-          \headernotenavigation
-        }{%
-          \ifstrequal{#1}{bridge}{%
-            \headernotebridge
-          }{%
-            \ifstrequal{#1}{misuse}{%
-              \headernotemisuse
-            }{%
-              \ifstrequal{#1}{diagnostic}{%
-                \headernotediagnostic
-              }{%
-                \ifstrequal{#1}{closing}{%
-                  \headernoteclosing
-                }{%
-                  \headernotenote
-                }%
-              }%
-            }%
-          }%
-        }%
-      }%
-    }%
-  }%
+\ExplSyntaxOn
+\NewDocumentCommand{\notevariant}{m}{%
+  \str_case:nnF {#1} {
+    {warning}   {\headernotewarning}
+    {breadcrumb}{\headernotebreadcrumb}
+    {contrast}  {\headernotecontrast}
+    {transition}{\headernotetransition}
+    {navigation}{\headernotenavigation}
+    {bridge}    {\headernotebridge}
+    {usage}     {\headernoteusage}
+    {synthesis} {\headernotesynthesis}
+    {disclosure}{\headernotedisclosure}
+    {misuse}    {\headernotemisuse}
+    {diagnostic}{\headernotediagnostic}
+    {closing}   {\headernoteclosing}
+  }{\headernotenote}%
 }
+\ExplSyntaxOff
 
 
 %--------------------------------------------------------------------
@@ -383,6 +405,19 @@
   skipabove=0.8\baselineskip,
   skipbelow=0.8\baselineskip,
   linewidth=0.8pt,
+  linecolor=noteboxtransitionline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxtransitionbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxtransition}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
   linecolor=noteboxnavigationline,
   roundcorner=4pt,
   backgroundcolor=noteboxnavigationbg,
@@ -404,6 +439,45 @@
   innerleftmargin=0.95em,
   innerrightmargin=0.95em,
 ]{noteboxbridge}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxusageline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxusagebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxusage}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxsynthesisline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxsynthesisbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxsynthesis}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxdisclosureline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxdisclosurebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxdisclosure}
 
 \newmdenv[
   skipabove=0.8\baselineskip,
@@ -443,3 +517,4 @@
   innerleftmargin=0.95em,
   innerrightmargin=0.95em,
 ]{noteboxclosing}
+
