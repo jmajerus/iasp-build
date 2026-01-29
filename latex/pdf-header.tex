@@ -488,6 +488,8 @@
 % --------------------------------------------------
 \usepackage{mdframed}
 \usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{booktabs}
 
 \ifthenelse{\boolean{rendergrayscale}}{%%
   \selectcolormodel{gray}%%
@@ -526,12 +528,48 @@
 \definecolor{noteboxbridgeline}{HTML}{6F58B9}
 \definecolor{noteboxusagebg}{HTML}{EEF4FA}
 \definecolor{noteboxusageline}{HTML}{3B6EA8}
+\definecolor{noteboxintegrationbg}{HTML}{E8F7F6}
+\definecolor{noteboxintegrationline}{HTML}{0F766E}
+\definecolor{noteboxresponsibilitybg}{HTML}{FFF4E6}
+\definecolor{noteboxresponsibilityline}{HTML}{B45309}
+\definecolor{noteboxreflexivebg}{HTML}{EFF2F7}
+\definecolor{noteboxreflexiveline}{HTML}{64748B}
 \definecolor{noteboxsynthesisbg}{HTML}{E7F7EF}
 \definecolor{noteboxsynthesisline}{HTML}{2F855A}
 \definecolor{noteboxdisclosurebg}{HTML}{F5EDFF}
 \definecolor{noteboxdisclosureline}{HTML}{A855F7}
 \definecolor{noteboxmisusebg}{HTML}{FFEDEA}
 \definecolor{noteboxmisuseline}{HTML}{B42318}
+
+% --------------------------------------------------
+% Table appearance helpers
+% --------------------------------------------------
+\definecolor{iaspTableStripe}{HTML}{F3F5F7}
+\definecolor{iaspTableBorder}{HTML}{C9CED6}
+
+\newcommand{\iaspTableCompactStart}{%
+  \begingroup\small%
+  \setlength{\tabcolsep}{3.5pt}%
+  \renewcommand{\arraystretch}{1.1}%
+}
+\newcommand{\iaspTableCompactEnd}{\endgroup}
+
+\newcommand{\iaspTableStripedStart}{\rowcolors{2}{iaspTableStripe}{white}}
+\newcommand{\iaspTableStripedEnd}{\rowcolors{2}{}{}}
+
+\newenvironment{iaspTableBordered}{%
+  \begin{mdframed}[
+    linecolor=iaspTableBorder,
+    linewidth=0.6pt,
+    backgroundcolor=white,
+    skipabove=0.6em,
+    skipbelow=0.6em,
+    innerleftmargin=6pt,
+    innerrightmargin=6pt,
+    innertopmargin=6pt,
+    innerbottommargin=6pt
+  ]%
+}{\end{mdframed}}
 \definecolor{noteboxdiagnosticbg}{HTML}{E7F0FF}
 \definecolor{noteboxdiagnosticline}{HTML}{2454C6}
 \definecolor{noteboxclosingbg}{HTML}{F5F7FB}
@@ -567,6 +605,12 @@
     noteboxbridgeline,%%
     noteboxusagebg,%%
     noteboxusageline,%%
+    noteboxintegrationbg,%%
+    noteboxintegrationline,%%
+    noteboxresponsibilitybg,%%
+    noteboxresponsibilityline,%%
+    noteboxreflexivebg,%%
+    noteboxreflexiveline,%%
     noteboxsynthesisbg,%%
     noteboxsynthesisline,%%
     noteboxdisclosurebg,%%
@@ -592,6 +636,9 @@
 \providecommand{\notebadgebgnavigation}{noteboxnavigationline!18!white}
 \providecommand{\notebadgebgbridge}{noteboxbridgeline!18!white}
 \providecommand{\notebadgebgusage}{noteboxusageline!18!white}
+\providecommand{\notebadgebgintegration}{noteboxintegrationline!18!white}
+\providecommand{\notebadgebgresponsibility}{noteboxresponsibilityline!18!white}
+\providecommand{\notebadgebgreflexive}{noteboxreflexiveline!18!white}
 \providecommand{\notebadgebgsynthesis}{noteboxsynthesisline!18!white}
 \providecommand{\notebadgebgdisclosure}{noteboxdisclosureline!18!white}
 \providecommand{\notebadgebgmisuse}{noteboxmisuseline!15!white}

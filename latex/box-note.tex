@@ -23,6 +23,9 @@
 \newcommand{\glyphnavigation}{{\noteglyphfont ⇢}} % note.navigation
 \newcommand{\glyphbridge}{{\noteglyphfont ⟷}}   % note.bridge
 \newcommand{\glyphusage}{{\noteglyphfont ⚙}}    % note.usage
+\newcommand{\glyphintegration}{{\noteglyphfont ∞}} % note.integration
+\newcommand{\glyphresponsibility}{{\noteglyphfont ⚖}} % note.responsibility
+\newcommand{\glyphreflexive}{{\noteglyphfont ⟲}} % note.reflexive
 \newcommand{\glyphsynthesis}{{\noteglyphfont ⊕}}   % note.synthesis
 \newcommand{\glyphdisclosure}{{\noteglyphfont ◊}}   % note.disclosure
 \newcommand{\glyphmisuse}{{\noteglyphfont ✕}}    % note.misuse
@@ -118,6 +121,48 @@
   \vspace{-0.25em}
   \noindent
   \expandafter\colorbox\expandafter{\notebadgebgusage}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3g. Badge strip header with integration accent color.
+\newcommand{\noteheaderbadgeintegration}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgintegration}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3h. Badge strip header with responsibility accent color.
+\newcommand{\noteheaderbadgeresponsibility}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgresponsibility}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3i. Badge strip header with reflexive accent color.
+\newcommand{\noteheaderbadgereflexive}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgreflexive}{%
     \rule{0pt}{.10\baselineskip}%
     \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
   }%
@@ -267,6 +312,21 @@
   \noteheaderbadgeusage{\glyphusage}%
 }
 
+% note.integration → teal integration badge
+\newcommand{\headernoteintegration}{%
+  \noteheaderbadgeintegration{\glyphintegration}%
+}
+
+% note.responsibility → amber responsibility badge
+\newcommand{\headernoteresponsibility}{%
+  \noteheaderbadgeresponsibility{\glyphresponsibility}%
+}
+
+% note.reflexive → slate reflexive badge
+\newcommand{\headernotereflexive}{%
+  \noteheaderbadgereflexive{\glyphreflexive}%
+}
+
 % note.synthesis → synthesis badge
 \newcommand{\headernotesynthesis}{%
   \noteheaderbadgesynthesis{\glyphsynthesis}%
@@ -322,6 +382,9 @@
     {navigation}{\headernotenavigation}
     {bridge}    {\headernotebridge}
     {usage}     {\headernoteusage}
+    {integration}{\headernoteintegration}
+    {responsibility}{\headernoteresponsibility}
+    {reflexive}{\headernotereflexive}
     {synthesis} {\headernotesynthesis}
     {disclosure}{\headernotedisclosure}
     {misuse}    {\headernotemisuse}
@@ -452,6 +515,45 @@
   innerleftmargin=0.95em,
   innerrightmargin=0.95em,
 ]{noteboxusage}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxintegrationline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxintegrationbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxintegration}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxresponsibilityline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxresponsibilitybg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxresponsibility}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxreflexiveline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxreflexivebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxreflexive}
 
 \newmdenv[
   skipabove=0.8\baselineskip,

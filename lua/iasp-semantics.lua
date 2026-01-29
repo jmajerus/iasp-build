@@ -13,198 +13,35 @@ local utils = pandoc.utils
 local path = pandoc.path
 local system = pandoc.system
 
-local document_meta = {}
-local container_wrapper_map = {}
+local script_dir = (PANDOC_SCRIPT_FILE and path.directory(PANDOC_SCRIPT_FILE)) or "."
+package.path = package.path .. ";" .. script_dir .. "/?.lua;" .. script_dir .. "/?/init.lua"
+
+local meta = require("iasp.metadata")
+local shorthand = require("iasp.shorthand")
+local include = require("iasp.include")
+
+local meta_value = meta.meta_value
+local truthy_string = meta.truthy_string
+local named_block_badges_enabled = meta.named_block_badges_enabled
+local named_note_badges_enabled = meta.named_note_badges_enabled
+local table_fullpage_min_rows = meta.table_fullpage_min_rows
+local table_compact_min_cols = meta.table_compact_min_cols
+local article_build_enabled = meta.article_build_enabled
+local resolve_toggle = meta.resolve_toggle
+local frontmatter_enabled = meta.frontmatter_enabled
+local backmatter_enabled = meta.backmatter_enabled
+
 local build_stage_cache = nil
-local article_mode_cache = nil
-local frontmatter_enabled_cache = nil
-local backmatter_enabled_cache = nil
-local named_block_badges_enabled_cache = nil
-local named_note_badges_enabled_cache = nil
 local identifier_registry = {}
 local note_variant
 local note_variant_badge_label
-
-local build_wrapper_map
-
-local function capture_document_meta(meta)
-  document_meta = {}
-  container_wrapper_map = {}
+local function preprocess_shorthand(doc)
   build_stage_cache = nil
-  article_mode_cache = nil
-  frontmatter_enabled_cache = nil
-  backmatter_enabled_cache = nil
-  named_block_badges_enabled_cache = nil
-  named_note_badges_enabled_cache = nil
   identifier_registry = {}
-  if meta then
-    for key, value in pairs(meta) do
-      document_meta[key] = value
-    end
-  end
-  container_wrapper_map = build_wrapper_map(document_meta["container-wrappers"])
-  return nil
+  return shorthand.preprocess_shorthand(doc, meta.capture_document_meta)
 end
 
-local function meta_to_plain(node)
-  if node == nil then
-    return nil
-  end
-
-  if type(node) ~= "table" or node.t == nil then
-    return node
-  end
-
-  local tag = node.t
-
-  if tag == "MetaString" then
-    return node.text
-  elseif tag == "MetaInlines" or tag == "MetaBlocks" then
-    return utils.stringify(node)
-  elseif tag == "MetaBool" then
-    return node.boolean
-  elseif tag == "MetaList" then
-    local list = {}
-    for _, value in ipairs(node) do
-      table.insert(list, meta_to_plain(value))
-    end
-    return list
-  elseif tag == "MetaMap" then
-    local map = {}
-    for key, value in pairs(node) do
-      map[key] = meta_to_plain(value)
-    end
-    return map
-  elseif tag == "MetaInt" or tag == "MetaDouble" or tag == "MetaNumber" then
-    return node.value
-  end
-
-  return utils.stringify(node)
-end
-
-build_wrapper_map = function(meta_node)
-  local map = {}
-  if not meta_node then
-    return map
-  end
-
-  local plain = meta_to_plain(meta_node)
-  if type(plain) ~= "table" then
-    return map
-  end
-
-  local list
-  if plain[1] ~= nil then
-    list = plain
-  else
-    list = {}
-    for _, value in pairs(plain) do
-      table.insert(list, value)
-    end
-  end
-
-  for _, entry in ipairs(list) do
-    if type(entry) == "table" then
-      local rel_path = entry.path or entry.rel_path or entry.file
-      if rel_path and type(rel_path) == "string" then
-        map[rel_path] = entry
-      end
-    end
-  end
-
-  return map
-end
-
-local function meta_value(key)
-  if not document_meta or not key then
-    return nil
-  end
-
-  local node = document_meta[key]
-  if not node then
-    return nil
-  end
-
-  return utils.stringify(node)
-end
-
-local function truthy_string(value)
-  if value == nil then
-    return false
-  end
-  local lowered = tostring(value):lower()
-  return lowered == "1" or lowered == "true" or lowered == "yes" or lowered == "on"
-end
-
-local function named_block_badges_enabled()
-  if named_block_badges_enabled_cache ~= nil then
-    return named_block_badges_enabled_cache
-  end
-
-  local raw = meta_value("layout-named-block-badges")
-  if not raw or raw == "" then
-    raw = meta_value("named-block-badges") or meta_value("named_block_badges")
-  end
-
-  if not raw or raw == "" then
-    named_block_badges_enabled_cache = false
-    return named_block_badges_enabled_cache
-  end
-
-  named_block_badges_enabled_cache = truthy_string(raw)
-  return named_block_badges_enabled_cache
-end
-
-local function named_note_badges_enabled()
-  if named_note_badges_enabled_cache ~= nil then
-    return named_note_badges_enabled_cache
-  end
-
-  local raw = meta_value("layout-named-note-badges")
-  if not raw or raw == "" then
-    raw = meta_value("named-note-badges") or meta_value("named_note_badges")
-  end
-
-  if not raw or raw == "" then
-    named_note_badges_enabled_cache = false
-    return named_note_badges_enabled_cache
-  end
-
-  named_note_badges_enabled_cache = truthy_string(raw)
-  return named_note_badges_enabled_cache
-end
-
-local function article_build_enabled()
-  if article_mode_cache ~= nil then
-    return article_mode_cache
-  end
-  article_mode_cache = truthy_string(meta_value("article-build"))
-  return article_mode_cache
-end
-
-local function resolve_toggle(meta_key, default_state)
-  local value = meta_value(meta_key)
-  if value ~= nil and value ~= "" then
-    return truthy_string(value)
-  end
-  return default_state
-end
-
-local function frontmatter_enabled()
-  if frontmatter_enabled_cache ~= nil then
-    return frontmatter_enabled_cache
-  end
-  frontmatter_enabled_cache = resolve_toggle("frontmatter-enabled", not article_build_enabled())
-  return frontmatter_enabled_cache
-end
-
-local function backmatter_enabled()
-  if backmatter_enabled_cache ~= nil then
-    return backmatter_enabled_cache
-  end
-  backmatter_enabled_cache = resolve_toggle("backmatter-enabled", not article_build_enabled())
-  return backmatter_enabled_cache
-end
+local convert_shorthand_blocks = shorthand.convert_shorthand_blocks
 
 local function enforce_section_visibility(el)
   if not el or not el.classes then
@@ -333,6 +170,72 @@ local function add_unique(tbl, value)
     end
   end
   table.insert(tbl, value)
+end
+
+local function slugify_identifier_source(raw)
+  if not raw or raw == "" then
+    return nil
+  end
+
+  if utils and utils.slugify then
+    local via_util = utils.slugify(raw)
+    if via_util and via_util ~= "" then
+      return via_util
+    end
+  end
+
+  local lowered = raw:lower()
+  lowered = lowered:gsub("[^%w]+", "-")
+  lowered = lowered:gsub("-+", "-")
+  lowered = lowered:gsub("^-+", "")
+  lowered = lowered:gsub("-+$", "")
+
+  if lowered == "" then
+    return nil
+  end
+
+  return lowered
+end
+
+local function namespace_header_identifiers(blocks, prefix, min_level)
+  if not blocks or not prefix or prefix == "" then
+    return blocks
+  end
+
+  local threshold = min_level or 2
+  local replacements = {}
+
+  local function header_handler(h)
+    local level = h.level or 0
+    if level >= threshold and h.identifier and h.identifier ~= "" then
+      local old_id = h.identifier
+      local new_id = prefix .. "-" .. old_id
+      replacements[old_id] = new_id
+      h.identifier = new_id
+      return h
+    end
+    return nil
+  end
+
+  local function link_handler(el)
+    local target = el.target
+    if target and target:sub(1, 1) == "#" then
+      local bare = target:sub(2)
+      local mapped = replacements[bare]
+      if mapped then
+        el.target = "#" .. mapped
+        return el
+      end
+    end
+    return nil
+  end
+
+  local container = pandoc.Div(blocks)
+  container = pandoc.walk_block(container, {
+    Header = header_handler,
+    Link = link_handler,
+  })
+  return container.content
 end
 
 local function has_class(el, class_name)
@@ -735,6 +638,134 @@ local function has_local_glyph_hint(div)
   end
 
   return false
+end
+
+local function count_table_rows(table_block)
+  if not table_block or table_block.t ~= "Table" then
+    return 0
+  end
+
+  local count = 0
+  local head = table_block.head
+  if head and head.rows then
+    count = count + #head.rows
+  end
+  local bodies = table_block.bodies
+  if bodies then
+    for _, body in ipairs(bodies) do
+      if body.rows then
+        count = count + #body.rows
+      end
+    end
+  end
+  local foot = table_block.foot
+  if foot and foot.rows then
+    count = count + #foot.rows
+  end
+
+  return count
+end
+
+local function count_table_columns(table_block)
+  if not table_block or table_block.t ~= "Table" then
+    return 0
+  end
+
+  if table_block.colspecs then
+    return #table_block.colspecs
+  end
+
+  local c = table_block.c
+  if type(c) == "table" and type(c[2]) == "table" then
+    return #c[2]
+  end
+
+  return 0
+end
+
+local function div_table_column_count(div)
+  if not div or not div.content then
+    return 0
+  end
+  local max_cols = 0
+  for _, block in ipairs(div.content) do
+    if block.t == "Table" then
+      local cols = count_table_columns(block)
+      if cols > max_cols then
+        max_cols = cols
+      end
+    end
+  end
+  return max_cols
+end
+
+local function apply_table_appearance(div, format_hint)
+  if not div or not div.content then
+    return false
+  end
+
+  local wants_compact = has_class(div, "table-compact")
+  local wants_striped = has_class(div, "table-striped")
+  local wants_bordered = has_class(div, "table-bordered")
+
+  if not (wants_compact or wants_striped or wants_bordered) then
+    return false
+  end
+
+  if not format_hint:match("latex") then
+    return false
+  end
+
+  local updated = false
+  local next_blocks = {}
+
+  for _, block in ipairs(div.content) do
+    if block.t == "Table" then
+      if wants_compact then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactStart\n"))
+      end
+      if wants_bordered then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\begin{iaspTableBordered}\n"))
+      end
+      if wants_striped then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableStripedStart\n"))
+      end
+
+      table.insert(next_blocks, block)
+
+      if wants_striped then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableStripedEnd\n"))
+      end
+      if wants_bordered then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\end{iaspTableBordered}\n"))
+      end
+      if wants_compact then
+        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactEnd\n"))
+      end
+      updated = true
+    else
+      table.insert(next_blocks, block)
+    end
+  end
+
+  if updated then
+    div.content = next_blocks
+  end
+
+  return updated
+end
+
+local function div_table_row_count(div)
+  if not div or not div.content then
+    return 0
+  end
+  local total = 0
+  for _, block in ipairs(div.content) do
+    if block.t == "Table" then
+      total = total + count_table_rows(block)
+    end
+  end
+  return total
 end
 
 local function wants_box_badge(div)
@@ -1266,708 +1297,9 @@ local function apply_semantic_aliases(el)
   return mutated or alias_changed
 end
 
--- ---------------------------------------------------------------------------
--- Shorthand fenced divs (e.g., "::: callout" ... ":::")
--- ---------------------------------------------------------------------------
+-- Shorthand fenced divs are implemented in iasp/shorthand.lua.
 
-local SHORTHAND_BASES = {
-  callout = true,
-  note = true,
-  example = true,
-  definition = true,
-  sidebar = true,
-  aside = true,
-  ["sidebar-inline"] = true,
-  include = true
-}
-
-local function parse_shorthand_marker(text)
-  local body = text:match("^:::%s*(.-)%s*$")
-  if not body or body == "" then
-    return nil
-  end
-
-  local head, rest = body:match("^([^%s]+)%s*(.*)$")
-  if not head or head == "" then
-    return nil
-  end
-
-  local classes = {}
-  for part in head:gmatch("[^%.]+") do
-    local lowered = part:lower()
-    if lowered ~= "" then
-      table.insert(classes, lowered)
-    end
-  end
-
-  if #classes == 0 then
-    return nil
-  end
-
-  local base = classes[1]
-  if not SHORTHAND_BASES[base] then
-    return nil
-  end
-
-  local normalized = {}
-  for _, cls in ipairs(classes) do
-    add_unique(normalized, cls)
-  end
-
-  local attributes = {}
-  if rest and rest ~= "" then
-    for key, value in rest:gmatch('([%w_%-%:]+)%s*=%s*"(.-)"') do
-      attributes[key] = value
-    end
-    for key, value in rest:gmatch("([%w_%-%:]+)%s*=%s*'(.-)'") do
-      attributes[key] = value
-    end
-  end
-
-  return {
-    base = base,
-    classes = normalized,
-    attributes = attributes
-  }
-end
-
-local function shorthand_is_closer(block)
-  if block.t ~= "Para" and block.t ~= "Plain" then
-    return false
-  end
-
-  local text = utils.stringify(block)
-  return text:match("^:::%s*$") ~= nil
-end
-
-local function convert_shorthand_blocks(blocks)
-  local out = {}
-  local i = 1
-
-  while i <= #blocks do
-    if blocks[i].t == "Div" and blocks[i].content then
-      blocks[i].content = convert_shorthand_blocks(blocks[i].content)
-    end
-
-    local token = nil
-
-    if blocks[i].t == "Para" or blocks[i].t == "Plain" then
-      token = parse_shorthand_marker(utils.stringify(blocks[i]))
-    end
-
-    if token then
-      local inner = {}
-      local j = i + 1
-      local closed = false
-
-      while j <= #blocks do
-        if shorthand_is_closer(blocks[j]) then
-          closed = true
-          break
-        end
-        table.insert(inner, blocks[j])
-        j = j + 1
-      end
-
-      if closed then
-        local attr = pandoc.Attr("", token.classes, token.attributes or {})
-        local div = pandoc.Div(inner, attr)
-        table.insert(out, div)
-        i = j + 1
-        goto continue
-      end
-      -- If no closer is found, fall through and treat text literally.
-    end
-
-    table.insert(out, blocks[i])
-    i = i + 1
-    ::continue::
-  end
-
-  return out
-end
-
-local function preprocess_shorthand(doc)
-  capture_document_meta(doc.meta)
-  doc.blocks = convert_shorthand_blocks(doc.blocks)
-  return doc
-end
-
--- ---------------------------------------------------------------------------
--- Include directives (::: include path="file.md" :::)
--- ---------------------------------------------------------------------------
-
-local include_stack = {}
-
-local function attr_truthy(value)
-  if value == nil then
-    return false
-  end
-  local lowered = tostring(value):lower()
-  return lowered == "1" or lowered == "true" or lowered == "yes" or lowered == "on"
-end
-
-local function normalize_newlines(text)
-  if not text then
-    return ""
-  end
-  local result = text:gsub("\r\n", "\n")
-  result = result:gsub("\r", "\n")
-  return result
-end
-
-local function include_error_blocks(target, reason)
-  local message
-  if target and target ~= "" then
-    message = "[Err: The file '" .. target .. "' could not be inserted here]"
-  else
-    message = "[Err: An include directive could not be expanded here]"
-  end
-
-  if reason and reason ~= "" then
-    message = message .. " (" .. reason .. ")"
-  end
-
-  message = "(" .. message .. ".)"
-  return { pandoc.Para({ pandoc.Str(message) }) }
-end
-
-local function slugify_identifier_source(raw)
-  if not raw or raw == "" then
-    return nil
-  end
-
-  if utils and utils.slugify then
-    local via_util = utils.slugify(raw)
-    if via_util and via_util ~= "" then
-      return via_util
-    end
-  end
-
-  local lowered = raw:lower()
-  lowered = lowered:gsub("[^%w]+", "-")
-  lowered = lowered:gsub("-+", "-")
-  lowered = lowered:gsub("^-+", "")
-  lowered = lowered:gsub("-+$", "")
-
-  if lowered == "" then
-    return nil
-  end
-
-  return lowered
-end
-
-local function namespace_header_identifiers(blocks, prefix, min_level)
-  if not blocks or not prefix or prefix == "" then
-    return blocks
-  end
-
-  local threshold = min_level or 2
-  local replacements = {}
-
-  local function header_handler(h)
-    local level = h.level or 0
-    if level >= threshold and h.identifier and h.identifier ~= "" then
-      local old_id = h.identifier
-      local new_id = prefix .. "-" .. old_id
-      replacements[old_id] = new_id
-      h.identifier = new_id
-      return h
-    end
-    return nil
-  end
-
-  local function link_handler(el)
-    local target = el.target
-    if target and target:sub(1, 1) == "#" then
-      local bare = target:sub(2)
-      local mapped = replacements[bare]
-      if mapped then
-        el.target = "#" .. mapped
-        return el
-      end
-    end
-    return nil
-  end
-
-  local container = pandoc.Div(blocks)
-  container = pandoc.walk_block(container, {
-    Header = header_handler,
-    Link = link_handler,
-  })
-  return container.content
-end
-
-local function build_literal_code_block(raw, div, attrs)
-  local normalized = normalize_newlines(raw)
-  local identifier = ""
-  if div.identifier and div.identifier ~= "" then
-    identifier = div.identifier
-  elseif attrs.id and attrs.id ~= "" then
-    identifier = attrs.id
-  end
-
-  local classes = {}
-  if div.classes then
-    for _, cls in ipairs(div.classes) do
-      if cls ~= "include" then
-        table.insert(classes, cls)
-      end
-    end
-  end
-
-  local attributes = {}
-  local lang = attrs.lang or attrs.language
-  if lang and lang ~= "" then
-    attributes.lang = lang
-  end
-
-  return pandoc.CodeBlock(normalized, pandoc.Attr(identifier, classes, attributes))
-end
-
-local function resolve_include_path(target)
-  if not target or target == "" then
-    return nil
-  end
-
-  if path and path.is_absolute and path.is_absolute(target) then
-    return target
-  end
-
-  local cwd = system.get_working_directory()
-  if path and path.normalize then
-    return path.normalize(cwd .. "/" .. target)
-  end
-  return cwd .. "/" .. target
-end
-
-local function path_is_dir(target)
-  local stat = io.popen("test -d '" .. target .. "' && echo dir\n")
-  if not stat then
-    return false
-  end
-  local result = stat:read("*l")
-  stat:close()
-  return result == "dir"
-end
-
-local function basename_without_ext(raw)
-  if not raw or raw == "" then
-    return nil
-  end
-
-  local trimmed = raw:gsub("[\\/]+$", "")
-  if trimmed == "" then
-    trimmed = raw
-  end
-
-  local filename
-  if path and path.filename then
-    filename = path.filename(trimmed)
-  else
-    filename = trimmed:match("([^/\\]+)$") or trimmed
-  end
-
-  if not filename or filename == "" then
-    filename = trimmed
-  end
-
-  local base = filename:match("^(.*)%.([^%.]+)$")
-  if base and base ~= "" then
-    return base
-  end
-
-  return filename
-end
-
-local function parse_target_sequence(raw)
-  if not raw or raw == "" then
-    return {}
-  end
-
-  local entries = {}
-  for entry in raw:gmatch("[^,]+") do
-    local trimmed = entry:gsub("^%s+", ""):gsub("%s+$", "")
-    if trimmed ~= "" then
-      table.insert(entries, trimmed)
-    end
-  end
-  return entries
-end
-
-local function read_sequence_file_specs(spec_path)
-  if not spec_path or spec_path == "" then
-    return {}
-  end
-
-  local resolved = resolve_include_path(spec_path)
-  if not resolved then
-    io.stderr:write("[include] unable to resolve list file " .. spec_path .. "\n")
-    return {}
-  end
-
-  local fh, err = io.open(resolved, "r")
-  if not fh then
-    io.stderr:write("[include] unable to read list file " .. resolved .. ": " .. (err or "") .. "\n")
-    return {}
-  end
-
-  local specs = {}
-  for line in fh:lines() do
-    local trimmed = line:gsub("^%s+", ""):gsub("%s+$", "")
-    if trimmed ~= "" and not trimmed:match("^#") then
-      table.insert(specs, trimmed)
-    end
-  end
-  fh:close()
-  return specs
-end
-
-local function list_markdown_files(dir)
-  local files = {}
-  local p = io.popen("ls -1 '" .. dir .. "'")
-  if not p then
-    return files
-  end
-  for entry in p:lines() do
-    local candidate = dir .. "/" .. entry
-    local stat = io.popen("test -f '" .. candidate .. "' && echo file\n")
-    if stat then
-      local result = stat:read("*l")
-      stat:close()
-      if result == "file" and (candidate:match("%.md$") or candidate:match("%.markdown$")) then
-        table.insert(files, candidate)
-      end
-    end
-  end
-  table.sort(files)
-  return files
-end
-
-local function read_include_file(resolved)
-  local fh, err = io.open(resolved, "r")
-  if not fh then
-    io.stderr:write("[include] unable to read " .. resolved .. ": " .. (err or "") .. "\n")
-    return nil
-  end
-  local contents = fh:read("*a")
-  fh:close()
-  return contents
-end
-
-local function expand_include_div(div)
-  if not has_class(div, "include") then
-    return nil
-  end
-
-  expand_compound_classes(div)
-  local allowed = enforce_stage_visibility(div)
-  if not allowed then
-    return {}
-  end
-
-  local section_allowed = enforce_section_visibility(div)
-  if not section_allowed then
-    return {}
-  end
-
-  local attrs = div.attributes or {}
-  local target = attrs.path
-    or attrs.src
-    or attrs.file
-    or attrs.dir
-    or attrs["data-dir"]
-    or attrs["data-path"]
-    or attrs["data-src"]
-    or attrs["data-file"]
-
-  local sequence_attr = attrs.sequence
-    or attrs.paths
-    or attrs.files
-    or attrs.targets
-    or attrs["data-sequence"]
-    or attrs["data-paths"]
-    or attrs["data-files"]
-    or attrs["data-targets"]
-
-  local sequence_file_attr = attrs["sequence-file"]
-    or attrs["paths-file"]
-    or attrs["files-file"]
-    or attrs["targets-file"]
-    or attrs["list-file"]
-    or attrs["data-sequence-file"]
-    or attrs["data-paths-file"]
-    or attrs["data-files-file"]
-    or attrs["data-targets-file"]
-    or attrs["data-list-file"]
-
-  local sequence_specs = nil
-  if sequence_attr and sequence_attr ~= "" then
-    sequence_specs = parse_target_sequence(sequence_attr)
-  end
-
-  local function append_sequence_specs(spec_list)
-    if not spec_list or #spec_list == 0 then
-      return
-    end
-    sequence_specs = sequence_specs or {}
-    for _, spec in ipairs(spec_list) do
-      table.insert(sequence_specs, spec)
-    end
-  end
-
-  if sequence_file_attr and sequence_file_attr ~= "" then
-    local file_specs = {}
-    local file_entries = parse_target_sequence(sequence_file_attr)
-    if #file_entries == 0 then
-      file_entries = { sequence_file_attr }
-    end
-    for _, file_spec in ipairs(file_entries) do
-      local resolved_specs = read_sequence_file_specs(file_spec)
-      append_sequence_specs(resolved_specs)
-    end
-  end
-
-  if (not target or target == "") and (not sequence_specs or #sequence_specs == 0) then
-    io.stderr:write("[include] missing path attribute on include block\n")
-    return include_error_blocks(nil, "missing path attribute")
-  end
-
-  local resolved = nil
-  if not sequence_specs then
-    resolved = resolve_include_path(target)
-    if not resolved then
-      io.stderr:write("[include] unable to resolve path for " .. target .. "\n")
-      return include_error_blocks(target, "path not found")
-    end
-  end
-
-  local include_targets = {}
-  local first_target_spec = nil
-
-  local attr_mode = attrs.mode
-    or attrs["data-mode"]
-    or ((attrs.dir or attrs["data-dir"]) and "dir")
-    or "file"
-  local separator_mode = "rule"
-  local section_glyph = nil
-  local raw_sep = attrs.separator or attrs.sep or attrs["data-separator"] or attrs["data-sep"]
-  if raw_sep then
-    local lowered = raw_sep:lower()
-    if lowered == "none" or lowered == "false" or lowered == "off" then
-      separator_mode = "none"
-    end
-  end
-  local glyph_attr = attrs["glyph"] or attrs["section-glyph"] or attrs["heading-glyph"]
-  if glyph_attr and glyph_attr ~= "" then
-    section_glyph = glyph_attr
-  end
-  local banner_text = nil
-  local banner_use_filename = false
-  local raw_banner = attrs.banner
-    or attrs["page-banner"]
-    or attrs["running-head"]
-    or attrs["runninghead"]
-    or attrs["data-banner"]
-    or attrs["data-running-head"]
-  if raw_banner and raw_banner ~= "" then
-    local trimmed = raw_banner:gsub("^%s+", ""):gsub("%s+$", "")
-    if trimmed ~= "" then
-      local lowered = trimmed:lower()
-      if lowered == "filename" or lowered == "file" or lowered == "basename" or lowered == "auto" then
-        banner_use_filename = true
-      else
-        banner_text = trimmed
-      end
-    end
-  end
-
-  local listing_mode = nil
-  local raw_listing = attrs.list
-    or attrs.listing
-    or attrs["list-mode"]
-    or attrs["data-list"]
-    or attrs["data-listing"]
-    or attrs["data-list-mode"]
-  if raw_listing and raw_listing ~= "" then
-    local lowered = raw_listing:lower()
-    if lowered == "name" or lowered == "names" or lowered == "filename" or lowered == "filenames" then
-      listing_mode = "filenames"
-    elseif lowered == "basename" or lowered == "basenames" then
-      listing_mode = "basenames"
-    elseif lowered == "path" or lowered == "paths" or lowered == "full" then
-      listing_mode = "paths"
-    end
-  end
-
-  local literal_mode = attr_mode == "literal"
-    or attr_mode == "code"
-    or has_class(div, "code")
-    or has_class(div, "literal")
-    or attr_truthy(attrs.literal)
-
-  if sequence_specs and #sequence_specs > 0 then
-    for _, spec in ipairs(sequence_specs) do
-      local resolved_spec = resolve_include_path(spec)
-      if not resolved_spec then
-        io.stderr:write("[include] unable to resolve path for " .. spec .. "\n")
-      else
-        table.insert(include_targets, resolved_spec)
-        if not first_target_spec then
-          first_target_spec = spec
-          if not resolved then
-            resolved = resolved_spec
-          end
-        end
-      end
-    end
-    if #include_targets == 0 then
-      local unresolved = sequence_specs and sequence_specs[1] or first_target_spec or target
-      return include_error_blocks(unresolved, "no readable targets")
-    end
-  elseif is_dir then
-    local files = list_markdown_files(resolved:gsub("/$", ""))
-    if #files == 0 then
-      io.stderr:write("[include] no markdown files found in directory " .. resolved .. "\n")
-      return include_error_blocks(target or resolved, "directory has no markdown files")
-    end
-    include_targets = files
-  else
-    include_targets = { resolved }
-  end
-
-  local is_dir = attr_mode == "dir"
-  if not is_dir and resolved then
-    if resolved:sub(-1) == "/" or path_is_dir(resolved) then
-      is_dir = true
-    end
-  end
-
-  local namespace_ids = is_dir
-  local raw_namespace = attrs["namespace-ids"] or attrs["data-namespace-ids"]
-  if raw_namespace ~= nil then
-    namespace_ids = attr_truthy(raw_namespace)
-  end
-
-  if listing_mode and #include_targets > 0 then
-    local list_items = {}
-    for _, include_path in ipairs(include_targets) do
-      local label
-      if listing_mode == "filenames" or listing_mode == "basenames" then
-        label = basename_without_ext(include_path) or include_path
-      else
-        label = include_path
-      end
-
-      table.insert(list_items, { pandoc.Plain({ pandoc.Str(label) }) })
-    end
-
-    local ordered = false
-    local list_style = attrs["list-style"] or attrs["data-list-style"] or attrs["list-type"]
-    if list_style and list_style ~= "" then
-      local lowered = list_style:lower()
-      if lowered == "ordered" or lowered == "numbered" then
-        ordered = true
-      end
-    end
-
-    if ordered then
-      return { pandoc.OrderedList(list_items) }
-    end
-
-    return { pandoc.BulletList(list_items) }
-  end
-
-  local assembled = {}
-
-  local total_targets = #include_targets
-  for idx, include_path in ipairs(include_targets) do
-    if include_stack[include_path] then
-      io.stderr:write("[include] recursive include detected for " .. include_path .. "\n")
-      local recursion_blocks = include_error_blocks(include_path, "recursive reference")
-      for _, block in ipairs(recursion_blocks) do
-        table.insert(assembled, block)
-      end
-      goto continue
-    end
-
-    local contents = read_include_file(include_path)
-    if not contents then
-      local failure_blocks = include_error_blocks(include_path, "file could not be read")
-      for _, block in ipairs(failure_blocks) do
-        table.insert(assembled, block)
-      end
-      goto continue
-    end
-
-    local inserted_blocks = false
-
-    if literal_mode then
-      table.insert(assembled, build_literal_code_block(contents, div, attrs))
-      inserted_blocks = true
-    else
-      include_stack[include_path] = true
-      local ok, included = pcall(function()
-        return pandoc.read(contents, "markdown")
-      end)
-      include_stack[include_path] = nil
-
-      if not ok then
-        io.stderr:write("[include] failed to parse " .. include_path .. ": " .. tostring(included) .. "\n")
-        goto continue
-      end
-
-      included.blocks = convert_shorthand_blocks(included.blocks)
-      if section_glyph then
-        apply_section_heading_glyph(included.blocks, section_glyph)
-      end
-      if namespace_ids then
-        local file_base = basename_without_ext(include_path)
-        local prefix = slugify_identifier_source(file_base)
-        if prefix then
-          included.blocks = namespace_header_identifiers(included.blocks, prefix, 3)
-        end
-      end
-      for _, b in ipairs(included.blocks) do
-        table.insert(assembled, b)
-        inserted_blocks = true
-      end
-    end
-
-    if inserted_blocks and separator_mode ~= "none" and idx < total_targets then
-      table.insert(assembled, pandoc.HorizontalRule())
-    end
-
-    ::continue::
-  end
-
-  local final_banner_text = banner_text
-  if not final_banner_text and banner_use_filename then
-    final_banner_text = basename_without_ext(first_target_spec or target)
-      or basename_without_ext(resolved)
-  end
-
-  if final_banner_text and #assembled > 0 then
-    local format_hint = FORMAT or ""
-    if format_hint:match("latex") then
-      local escaped = latex_escape_argument(final_banner_text)
-      local starts_with_level_one = begins_with_level_one_header(assembled)
-      local env_name = starts_with_level_one and "includepagebannerchapter" or "includepagebanner"
-      local wrapped = { pandoc.RawBlock("latex", "\\begin{" .. env_name .. "}{" .. escaped .. "}\n") }
-      for _, block in ipairs(assembled) do
-        table.insert(wrapped, block)
-      end
-      table.insert(wrapped, pandoc.RawBlock("latex", "\\end{" .. env_name .. "}\n"))
-      assembled = wrapped
-    else
-      local attr = pandoc.Attr("", { "include-banner" }, { ["data-banner-text"] = final_banner_text })
-      local wrapper = pandoc.Div(assembled, attr)
-      assembled = { wrapper }
-    end
-  end
-
-  return assembled
-end
+-- Include directives are implemented in iasp/include.lua.
 
 -- ---------------------------------------------------------------------------
 -- LaTeX/PDF aware block handlers
@@ -1986,6 +1318,9 @@ local NOTE_VARIANTS = {
   "navigation",
   "bridge",
   "usage",
+  "integration",
+  "responsibility",
+  "reflexive",
   "synthesis",
   "disclosure",
   "misuse",
@@ -2204,11 +1539,44 @@ local function handle_div(div)
   local has_fullpage_layout = has_class(div, "layout-fullpage")
     or has_class(div, "layout_fullpage")
     or has_class(div, "layout-full-page")
+  local has_table_semantics = has_class(div, "table")
+
+  if has_table_semantics and not has_fullpage_layout then
+    local min_rows = table_fullpage_min_rows()
+    if min_rows and min_rows > 0 then
+      local table_rows = div_table_row_count(div)
+      if table_rows >= min_rows then
+        add_unique(div.classes, "layout-fullpage")
+        add_unique(div.classes, "table-fullpage")
+        has_fullpage_layout = true
+        mutated = true
+      end
+    end
+  elseif has_table_semantics and has_fullpage_layout then
+    add_unique(div.classes, "table-fullpage")
+  end
+
+  if has_table_semantics and not has_class(div, "table-compact") then
+    local min_cols = table_compact_min_cols()
+    if min_cols and min_cols > 0 then
+      local columns = div_table_column_count(div)
+      if columns >= min_cols then
+        add_unique(div.classes, "table-compact")
+        mutated = true
+      end
+    end
+  end
 
   if manual_page_break then
     local breaker = chapter_page_break_block(format_hint)
     if breaker then
       return { breaker }
+    end
+  end
+
+  if has_table_semantics then
+    if apply_table_appearance(div, format_hint) then
+      mutated = true
     end
   end
 
@@ -2338,6 +1706,12 @@ local function handle_div(div)
       env = "noteboxbridge"
     elseif variant == "usage" then
       env = "noteboxusage"
+    elseif variant == "integration" then
+      env = "noteboxintegration"
+    elseif variant == "responsibility" then
+      env = "noteboxresponsibility"
+    elseif variant == "reflexive" then
+      env = "noteboxreflexive"
     elseif variant == "transition" then
       env = "noteboxtransition"
     elseif variant == "synthesis" then
@@ -2505,6 +1879,19 @@ local function handle_span(span)
   return nil
 end
 
+local include_expander = include.create({
+  expand_compound_classes = expand_compound_classes,
+  enforce_stage_visibility = enforce_stage_visibility,
+  enforce_section_visibility = enforce_section_visibility,
+  latex_escape_argument = latex_escape_argument,
+  begins_with_level_one_header = begins_with_level_one_header,
+  apply_section_heading_glyph = apply_section_heading_glyph,
+  slugify_identifier_source = slugify_identifier_source,
+  namespace_header_identifiers = namespace_header_identifiers,
+  convert_shorthand_blocks = convert_shorthand_blocks,
+  has_class = has_class,
+})
+
 -- Helper used by the LaTeX sidebar post-processor
 local function collect_sidebar_blocks(blocks, i)
   local collected = {}
@@ -2581,7 +1968,7 @@ end
 
 return {
   { Pandoc = preprocess_shorthand },
-  { Div = expand_include_div },
+  { Div = include_expander.expand_include_div },
   {
     Div = handle_div,
     Header = handle_header,

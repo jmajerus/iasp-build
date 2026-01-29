@@ -44,7 +44,7 @@ from xml.etree import ElementTree as ET
 from .lib import config as iasp_config
 from .lib import layout_overrides, vscode_tasks
 from .lib.background_palettes import select_luma_offset
-from .lib.order_sources import load_book_order
+from .lib.order_sources import BookOrderData, load_book_order, normalize_path
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
 from .preprocess import config as preprocess_config
 
@@ -138,6 +138,18 @@ def _config_int(value: Any, default: int, *, minimum: int | None = None, maximum
     return number
 
 
+def _config_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value]
+        return [item for item in items if item]
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    return []
+
+
 def _config_float(
     value: Any,
     default: float,
@@ -164,6 +176,29 @@ PREPROCESS_ACTIVE = preprocess_config.is_enabled()
 TOC_ENABLED = _config_bool(TOC_SETTINGS.get("enabled"), True)
 TOC_INCLUDE_APPENDICES = _config_bool(TOC_SETTINGS.get("include_appendices"), True)
 TOC_MAX_DEPTH = _config_int(TOC_SETTINGS.get("max_depth"), 3, minimum=1, maximum=6)
+
+
+def _resolve_annex_settings() -> dict[str, Any]:
+    layout_annex = LAYOUT_SETTINGS.get("annexes")
+    layout_annex = layout_annex if isinstance(layout_annex, dict) else {}
+    top_level = _config_section("annexes")
+    settings = dict(layout_annex)
+    settings.update(top_level)
+    return settings
+
+
+ANNEX_SETTINGS = _resolve_annex_settings()
+ANNEX_IDS = _config_list(ANNEX_SETTINGS.get("annex_ids"))
+ANNEX_INCLUDE_INSIDE = _config_bool(ANNEX_SETTINGS.get("include_inside_manuscript"), False)
+ANNEX_POSITION_AFTER_APPENDICES = _config_bool(ANNEX_SETTINGS.get("position_after_appendices"), True)
+
+
+def _discover_annex_orders() -> list[Path]:
+    annex_root = ROOT / "annexes"
+    if not annex_root.exists():
+        return []
+    candidates = sorted(annex_root.glob("*/book-order.txt"))
+    return [path.resolve() for path in candidates if path.is_file()]
 
 
 @dataclass
@@ -317,6 +352,7 @@ class HeadingContent:
 
 BIBLIOGRAPHY_FILES = [ROOT / "references.bib"]
 SPECIAL_CITATION_KEYS = {"*", "-"}
+CITEPROC_MISSING_PATTERN = re.compile(r"Citeproc: citation\s+([^\s]+)\s+not found")
 
 
 def stage_cover_image() -> None:
@@ -337,9 +373,34 @@ def stage_cover_image() -> None:
         sys.exit(1)
 
 
+def _report_missing_citations_from_stderr(stderr: str) -> None:
+    if not stderr:
+        return
+    missing = sorted({match.group(1) for match in CITEPROC_MISSING_PATTERN.finditer(stderr)})
+    if not missing:
+        return
+    preview = ", ".join(missing[:12])
+    if len(missing) > 12:
+        preview = f"{preview}, ..."
+    print(
+        "\n!! Citeproc reported missing citation keys:\n"
+        f"   {preview}\n"
+        "\nPlease add these keys to references.bib (or fix typos) before rebuilding."
+    )
+    sys.exit(1)
+
+
 def run(cmd: list[str]) -> None:
     print("\n>> Running:", " ".join(str(c) for c in cmd))
-    result = subprocess.run(cmd)
+    if cmd and cmd[0] == "pandoc":
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+        _report_missing_citations_from_stderr(result.stderr or "")
+    else:
+        result = subprocess.run(cmd)
     if result.returncode != 0:
         print(f"\n!! Command failed with exit code {result.returncode}")
         sys.exit(result.returncode)
@@ -722,6 +783,12 @@ def update_build_metadata(build_stage: str | None = None) -> None:
         "layout-glyph-background-force-white": _config_bool(
             LAYOUT_SETTINGS.get("glyph_background_force_white"), False
         ),
+        "layout-table-fullpage-min-rows": _config_int(
+            LAYOUT_SETTINGS.get("table_fullpage_min_rows"), 0, minimum=0, maximum=100
+        ),
+        "layout-table-compact-min-cols": _config_int(
+            LAYOUT_SETTINGS.get("table_compact_min_cols"), 0, minimum=0, maximum=50
+        ),
     }
 
     if glyph_palette_name:
@@ -758,6 +825,19 @@ def append_metadata_files(cmd: list[str]) -> None:
     sources: list[Path | None] = [BUILD_METADATA_JSON, CONTAINER_WRAPPERS_JSON]
     sources.extend(PROFILE_METADATA_FILES)
 
+    def _metadata_has_bibliography(paths: list[Path]) -> bool:
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            lowered = text.lower()
+            if "bibliography:" in lowered or "bibliography=" in lowered:
+                return True
+        return False
+
     seen: set[Path] = set()
     for meta in sources:
         if meta is None:
@@ -771,6 +851,11 @@ def append_metadata_files(cmd: list[str]) -> None:
         seen.add(resolved)
         if meta.exists():
             cmd += ["--metadata-file", str(meta)]
+
+    if PROFILE and PROFILE.name and PROFILE.name != "default":
+        if not _metadata_has_bibliography(PROFILE_METADATA_FILES):
+            if BIBLIOGRAPHY_FILES:
+                cmd += ["--metadata", f"bibliography:{BIBLIOGRAPHY_FILES[0]}"]
 
 
 def iter_css_files() -> list[Path]:
@@ -1556,11 +1641,138 @@ def read_book_order() -> list[str]:
     - Ignores blank lines
     - Ignores lines starting with '#'
     """
+    def _should_include_annexes() -> bool:
+        if not ANNEX_INCLUDE_INSIDE:
+            return False
+        if PROFILE and PROFILE.name and PROFILE.name in ANNEX_IDS:
+            return False
+        return True
+
+    def _resolve_annex_order_paths() -> list[Path]:
+        annex_ids = list(ANNEX_IDS)
+        if not annex_ids:
+            return _discover_annex_orders()
+
+        definitions = _read_profile_definitions()
+        resolved: list[Path] = []
+        seen: set[Path] = set()
+
+        discovered = {path.resolve() for path in _discover_annex_orders()}
+
+        for annex_id in annex_ids:
+            entry = definitions.get(annex_id)
+            order_value = None
+            if isinstance(entry, dict):
+                order_value = entry.get("order_file") or entry.get("order")
+
+            if order_value:
+                order_path = _resolve_profile_path(str(order_value))
+            else:
+                order_path = _resolve_profile_path(str(annex_id))
+
+            if not order_path.exists() and not order_path.is_absolute():
+                fallback = ROOT / "annexes" / str(annex_id) / "book-order.txt"
+                if fallback.exists():
+                    order_path = fallback.resolve()
+
+            if order_path == BOOK_ORDER:
+                continue
+
+            if not order_path.exists():
+                print(
+                    "-- Warning: annex order not found for "
+                    f"'{annex_id}'. Looked at {order_path}. "
+                    "If this is a profile ID, add it to build-profiles.json; "
+                    "otherwise set annex_ids to the order file path."
+                )
+                continue
+
+            if order_path not in seen:
+                resolved.append(order_path)
+                seen.add(order_path)
+
+        for path in discovered:
+            if path not in seen:
+                resolved.append(path)
+                seen.add(path)
+
+        return resolved
+
+    def _merge_label_map(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in extra.items():
+            if key not in merged:
+                merged[key] = value
+        return merged
+
+    def _merge_orders(base: BookOrderData, annexes: list[BookOrderData]) -> BookOrderData:
+        annex_entries: list[str] = []
+        for annex in annexes:
+            annex_entries.extend(annex.entries)
+
+        if not annex_entries:
+            return base
+
+        entries = list(base.entries)
+        base_set = {normalize_path(entry).lower() for entry in entries}
+        annex_deduped: list[str] = []
+        duplicates: list[str] = []
+        for entry in annex_entries:
+            key = normalize_path(entry).lower()
+            if key in base_set:
+                duplicates.append(entry)
+                continue
+            annex_deduped.append(entry)
+
+        if duplicates:
+            sample = ", ".join(duplicates[:5])
+            print(
+                "-- Warning: annex order entries already exist in main order; "
+                f"skipping {len(duplicates)} duplicate(s). Sample: {sample}"
+            )
+        appendices = [
+            idx
+            for idx, entry in enumerate(entries)
+            if normalize_path(entry).lower().startswith("appendices/")
+        ]
+
+        if ANNEX_POSITION_AFTER_APPENDICES:
+            insert_at = appendices[-1] + 1 if appendices else len(entries)
+        else:
+            insert_at = appendices[0] if appendices else len(entries)
+
+        if annex_deduped:
+            entries[insert_at:insert_at] = annex_deduped
+
+        front_labels = dict(base.front_labels)
+        chapter_labels = dict(base.chapter_labels)
+        sidebar_labels = dict(base.sidebar_labels)
+        appendix_labels = dict(base.appendix_labels)
+
+        for annex in annexes:
+            front_labels = _merge_label_map(front_labels, annex.front_labels)
+            chapter_labels = _merge_label_map(chapter_labels, annex.chapter_labels)
+            sidebar_labels = _merge_label_map(sidebar_labels, annex.sidebar_labels)
+            appendix_labels = _merge_label_map(appendix_labels, annex.appendix_labels)
+
+        return BookOrderData(entries, front_labels, chapter_labels, sidebar_labels, appendix_labels)
+
     try:
         order_data = load_book_order(BOOK_ORDER)
     except FileNotFoundError:
         print(f"!! book-order.txt not found at {BOOK_ORDER}")
         sys.exit(1)
+
+    if _should_include_annexes():
+        annex_paths = _resolve_annex_order_paths()
+        annex_orders: list[BookOrderData] = []
+        for path in annex_paths:
+            try:
+                annex_orders.append(load_book_order(path))
+            except FileNotFoundError:
+                print(f"-- Warning: annex order file missing at {path}")
+        if annex_orders:
+            order_data = _merge_orders(order_data, annex_orders)
 
     order_nodes = walk_order_entries(order_data, ROOT)
     inputs = flatten_nodes(order_nodes)

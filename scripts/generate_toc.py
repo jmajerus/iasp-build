@@ -34,6 +34,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from iasp_tooling.lib import config as iasp_config
+from iasp_tooling.lib.order_sources import normalize_path
+
+try:  # pragma: no cover - optional dependency
+    import yaml  # type: ignore
+except ModuleNotFoundError:
+    yaml = None  # type: ignore
 
 BOOK_ORDER = ROOT / "book-order.txt"
 DEFAULT_TOC_OUTPUT = "front matter/FRONT MATTER - Table of Contents.md"
@@ -101,8 +107,24 @@ def _config_list(value: Any) -> list[str]:
     return []
 
 
+def _load_annex_toc_overrides(annex_dir: Path) -> dict[str, Any]:
+    config_path = annex_dir / "annex-config.yaml"
+    if not config_path.exists():
+        return {}
+    if yaml is None:
+        print(f"-- Warning: PyYAML unavailable; skipping annex config at {config_path}")
+        return {}
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError) as exc:
+        print(f"-- Warning: unable to read annex config at {config_path}: {exc}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 CONFIG = iasp_config.load_config()
 TOC_SETTINGS = _config_section("toc")
+ANNEX_SETTINGS_TOP = _config_section("annexes")
 TOC_ENABLED = _config_bool(TOC_SETTINGS.get("enabled"), True)
 TOC_INCLUDE_APPENDICES = _config_bool(TOC_SETTINGS.get("include_appendices"), True)
 TOC_MAX_DEPTH = _config_int(TOC_SETTINGS.get("max_depth"), 3, minimum=1, maximum=6)
@@ -110,6 +132,10 @@ TOC_EXPANDED_SETTINGS = (
     TOC_SETTINGS.get("expanded_sections") if isinstance(TOC_SETTINGS.get("expanded_sections"), dict) else {}
 )
 TOC_EXPANDED_ENABLED = _config_bool(TOC_EXPANDED_SETTINGS.get("enabled"), False)
+TOC_EXPANDED_INCLUDE_UNNUMBERED = _config_bool(
+    TOC_EXPANDED_SETTINGS.get("include_unnumbered"),
+    False,
+)
 TOC_EXPANDED_MAX_NESTING = _config_int(
     TOC_EXPANDED_SETTINGS.get("max_nesting_level"), 2, minimum=1, maximum=3
 )
@@ -124,6 +150,63 @@ TOC_EPILOGUE_LABEL = _config_str(TOC_SETTINGS.get("epilogue_label"), "Epilogue")
 TOC_EPILOGUE_PATHS = set(_config_list(TOC_SETTINGS.get("epilogue_paths")))
 TOC_EPILOGUE_FILENAMES = set(_config_list(TOC_SETTINGS.get("epilogue_filenames")))
 TOC_SELF_REL_PATH = str(TOC_PATH.relative_to(ROOT)) if TOC_PATH.is_absolute() else str(TOC_PATH)
+
+
+def _resolve_annex_settings() -> dict[str, Any]:
+    layout = _config_section("layout")
+    layout_annex = layout.get("annexes") if isinstance(layout.get("annexes"), dict) else {}
+    settings = dict(layout_annex)
+    settings.update(ANNEX_SETTINGS_TOP)
+    return settings
+
+
+ANNEX_SETTINGS = _resolve_annex_settings()
+ANNEX_IDS = _config_list(ANNEX_SETTINGS.get("annex_ids"))
+ANNEX_INCLUDE_INSIDE = _config_bool(ANNEX_SETTINGS.get("include_inside_manuscript"), False)
+ANNEX_POSITION_AFTER_APPENDICES = _config_bool(ANNEX_SETTINGS.get("position_after_appendices"), True)
+ANNEX_TOC_OUTPUT_PATTERN = _config_str(
+    ANNEX_SETTINGS.get("toc_output_pattern"),
+    "annexes/{annex_id}/{annex_id}-toc.md",
+)
+ANNEX_TOC_HEADING_TITLE = _config_str(
+    ANNEX_SETTINGS.get("toc_heading_title"),
+    "ANNEX TABLE OF CONTENTS",
+)
+ANNEX_TOC_RUNNING_HEADER = _config_str(
+    ANNEX_SETTINGS.get("toc_running_header"),
+    "Annex Table of Contents",
+)
+TOC_ANNEXES_LABEL = _config_str(TOC_SETTINGS.get("annexes_label"), "Annexes")
+
+
+def _normalize_annex_toc_mode(value: str | None) -> str | None:
+    if not value:
+        return None
+    lowered = value.strip().lower()
+    if lowered in {"embedded", "external", "none"}:
+        return lowered
+    return None
+
+
+ANNEX_TOC_MODE = _normalize_annex_toc_mode(_config_str(ANNEX_SETTINGS.get("toc_mode"), None))
+if ANNEX_TOC_MODE is None:
+    ANNEX_TOC_MODE = "embedded"
+
+ANNEX_TOC_LINE_ITEM = ANNEX_TOC_MODE == "external"
+
+
+def _discover_annex_orders() -> list[tuple[str, Path]]:
+    annex_root = ROOT / "annexes"
+    if not annex_root.exists():
+        return []
+    candidates = sorted(annex_root.glob("*/book-order.txt"))
+    results: list[tuple[str, Path]] = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        annex_id = path.parent.name
+        results.append((annex_id, path.resolve()))
+    return results
 
 
 @dataclass
@@ -141,65 +224,225 @@ class NumberedHeading:
     title: str
 
 
-def parse_book_order() -> tuple[list[str], dict[str, str], dict[str, tuple[str, str]], dict[str, str], dict[str, str]]:
+def parse_book_order() -> tuple[
+    list[str],
+    dict[str, str],
+    dict[str, tuple[str, str]],
+    dict[str, str],
+    dict[str, str],
+    dict[str, str],
+    set[str],
+    dict[str, list[str]],
+    dict[str, set[str]],
+    bool,
+    dict[str, Path],
+]:
     paths: list[str] = []
     front_labels: dict[str, str] = {}
     chapter_labels: dict[str, tuple[str, str]] = {}
     sidebar_labels: dict[str, str] = {}
     appendix_labels: dict[str, str] = {}
+    annex_labels: dict[str, str] = {}
+    annex_source_paths: set[str] = set()
+    annex_entries_by_id: dict[str, list[str]] = {}
+    annex_source_paths_by_id: dict[str, set[str]] = {}
+    annex_toc_in_order = False
+    annex_dir_by_id: dict[str, Path] = {}
 
-    if not BOOK_ORDER.exists():
-        return paths, front_labels, chapter_labels, sidebar_labels, appendix_labels
+    def _merge_label_map(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in extra.items():
+            if key not in merged:
+                merged[key] = value
+        return merged
 
-    for raw in BOOK_ORDER.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line:
-            continue
+    def _parse_order_file(order_path: Path) -> tuple[
+        list[str],
+        dict[str, str],
+        dict[str, tuple[str, str]],
+        dict[str, str],
+        dict[str, str],
+        dict[str, str],
+    ]:
+        file_paths: list[str] = []
+        file_front: dict[str, str] = {}
+        file_chapter: dict[str, tuple[str, str]] = {}
+        file_sidebar: dict[str, str] = {}
+        file_appendix: dict[str, str] = {}
+        file_annex: dict[str, str] = {}
 
-        if line.startswith("# TOC:front"):
+        if not order_path.exists():
+            return file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex
+
+        for raw in order_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+
+            if line.startswith("# TOC:front"):
+                try:
+                    _, rest = line.split("# TOC:front", 1)
+                    path_part, label = rest.split("=", 1)
+                    path = path_part.strip()
+                    file_front[path] = label.strip()
+                except ValueError:
+                    pass
+                continue
+
+            if line.startswith("# TOC:chapter"):
+                try:
+                    _, rest = line.split("# TOC:chapter", 1)
+                    path_part, rhs = rest.split("=", 1)
+                    code_part, title_part = rhs.split("|", 1)
+                    file_chapter[path_part.strip()] = (code_part.strip(), title_part.strip())
+                except ValueError:
+                    pass
+                continue
+
+            if line.startswith("# TOC:sidebar"):
+                try:
+                    _, rest = line.split("# TOC:sidebar", 1)
+                    path_part, label = rest.split("=", 1)
+                    file_sidebar[path_part.strip()] = label.strip()
+                except ValueError:
+                    pass
+                continue
+
+            if line.startswith("# TOC:appendix"):
+                try:
+                    _, rest = line.split("# TOC:appendix", 1)
+                    path_part, label = rest.split("=", 1)
+                    file_appendix[path_part.strip()] = label.strip()
+                except ValueError:
+                    pass
+                continue
+
+            if line.startswith("# TOC:annex"):
+                try:
+                    _, rest = line.split("# TOC:annex", 1)
+                    path_part, label = rest.split("=", 1)
+                    file_annex[path_part.strip()] = label.strip()
+                except ValueError:
+                    pass
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            file_paths.append(line)
+
+        return file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex
+
+    main_paths, main_front, main_chapter, main_sidebar, main_appendix, main_annex = _parse_order_file(BOOK_ORDER)
+    paths.extend(main_paths)
+    front_labels.update(main_front)
+    chapter_labels.update(main_chapter)
+    sidebar_labels.update(main_sidebar)
+    appendix_labels.update(main_appendix)
+    annex_labels.update(main_annex)
+
+    if ANNEX_TOC_MODE != "none":
+        discovered_orders: list[tuple[str, Path]] = []
+        if ANNEX_TOC_MODE == "embedded":
+            discovered_orders = _discover_annex_orders()
+        profiles_path = ROOT / "build-profiles.json"
+        definitions: dict[str, Any] = {}
+        if profiles_path.exists():
             try:
-                _, rest = line.split("# TOC:front", 1)
-                path_part, label = rest.split("=", 1)
-                path = path_part.strip()
-                front_labels[path] = label.strip()
-            except ValueError:
-                pass
-            continue
+                raw = json.loads(profiles_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raw = {}
+            if isinstance(raw, dict):
+                definitions = raw
 
-        if line.startswith("# TOC:chapter"):
-            try:
-                _, rest = line.split("# TOC:chapter", 1)
-                path_part, rhs = rest.split("=", 1)
-                code_part, title_part = rhs.split("|", 1)
-                chapter_labels[path_part.strip()] = (code_part.strip(), title_part.strip())
-            except ValueError:
-                pass
-            continue
+        annex_paths: list[tuple[str, str]] = []
+        for annex_id in ANNEX_IDS:
+            entry = definitions.get(annex_id)
+            order_value = None
+            if isinstance(entry, dict):
+                order_value = entry.get("order_file") or entry.get("order")
 
-        if line.startswith("# TOC:sidebar"):
-            try:
-                _, rest = line.split("# TOC:sidebar", 1)
-                path_part, label = rest.split("=", 1)
-                sidebar_labels[path_part.strip()] = label.strip()
-            except ValueError:
-                pass
-            continue
+            candidate = Path(order_value) if order_value else Path(annex_id)
+            if not candidate.is_absolute():
+                candidate = (ROOT / candidate).resolve()
 
-        if line.startswith("# TOC:appendix"):
-            try:
-                _, rest = line.split("# TOC:appendix", 1)
-                path_part, label = rest.split("=", 1)
-                appendix_labels[path_part.strip()] = label.strip()
-            except ValueError:
-                pass
-            continue
+            if candidate == BOOK_ORDER:
+                continue
 
-        if line.startswith("#"):
-            continue
+            if not candidate.exists():
+                fallback = ROOT / "annexes" / str(annex_id) / "book-order.txt"
+                if fallback.exists():
+                    candidate = fallback.resolve()
 
-        paths.append(line)
+            annex_paths.append((annex_id, str(candidate)))
 
-    return paths, front_labels, chapter_labels, sidebar_labels, appendix_labels
+            annex_key = Path(annex_id).name or candidate.stem
+            annex_entries_by_id.setdefault(annex_key, [])
+            annex_source_paths_by_id.setdefault(annex_key, set())
+
+        annex_orders: list[str] = []
+        duplicates: list[str] = []
+        discovered_ids = {annex_id for annex_id, _ in annex_paths}
+        for annex_id, path in discovered_orders:
+            if annex_id in discovered_ids:
+                continue
+            annex_paths.append((annex_id, str(path)))
+
+        for annex_id, raw_path in annex_paths:
+            order_path = Path(raw_path)
+            annex_key = Path(annex_id).name or order_path.stem
+            file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex = _parse_order_file(
+                order_path
+            )
+            annex_dir_by_id.setdefault(annex_key, order_path.parent)
+            for entry in file_paths:
+                key = normalize_path(entry).lower()
+                if any(normalize_path(existing).lower() == key for existing in paths):
+                    duplicates.append(entry)
+                    continue
+                annex_orders.append(entry)
+                annex_source_paths.add(key)
+                annex_entries_by_id.setdefault(annex_key, []).append(entry)
+                annex_source_paths_by_id.setdefault(annex_key, set()).add(key)
+                filename = Path(entry).name.lower()
+                if "toc" in filename and "annexes/" in key:
+                    annex_toc_in_order = True
+            front_labels = _merge_label_map(front_labels, file_front)
+            chapter_labels = _merge_label_map(chapter_labels, file_chapter)
+            sidebar_labels = _merge_label_map(sidebar_labels, file_sidebar)
+            appendix_labels = _merge_label_map(appendix_labels, file_appendix)
+            annex_labels = _merge_label_map(annex_labels, file_annex)
+
+        if duplicates:
+            sample = ", ".join(duplicates[:5])
+            print(
+                "-- Warning: annex order entries already exist in main order; "
+                f"skipping {len(duplicates)} duplicate(s). Sample: {sample}"
+            )
+
+        if annex_orders:
+            appendices = [
+                idx for idx, entry in enumerate(paths) if entry.strip().lower().startswith("appendices/")
+            ]
+            if ANNEX_POSITION_AFTER_APPENDICES:
+                insert_at = appendices[-1] + 1 if appendices else len(paths)
+            else:
+                insert_at = appendices[0] if appendices else len(paths)
+            paths[insert_at:insert_at] = annex_orders
+
+    return (
+        paths,
+        front_labels,
+        chapter_labels,
+        sidebar_labels,
+        appendix_labels,
+        annex_labels,
+        annex_source_paths,
+        annex_entries_by_id,
+        annex_source_paths_by_id,
+        annex_toc_in_order,
+        annex_dir_by_id,
+    )
 
 
 def run_pandoc_json(path: Path) -> dict[str, Any]:
@@ -411,8 +654,7 @@ def normalize_whitespace(text: str | None) -> str | None:
 def split_code_from_title(text: str) -> tuple[str | None, str]:
     appendix_match = APPENDIX_RE.match(text)
     if appendix_match:
-        code = f"Appendix {appendix_match.group(1).upper()}."
-        return code, appendix_match.group(2).strip()
+        return None, text
 
     series_match = SERIES_CODE_RE.match(text)
     if series_match:
@@ -441,7 +683,12 @@ def split_numbered_heading(text: str) -> tuple[str, str] | None:
     return number, title
 
 
-def extract_numbered_headings(rel_path: str, max_nesting_level: int) -> list[NumberedHeading]:
+def extract_numbered_headings(
+    rel_path: str,
+    max_nesting_level: int,
+    *,
+    include_unnumbered: bool = False,
+) -> list[NumberedHeading]:
     blocks = load_document_blocks(rel_path)
     if not blocks:
         return []
@@ -461,15 +708,22 @@ def extract_numbered_headings(rel_path: str, max_nesting_level: int) -> list[Num
         if not text:
             continue
         split = split_numbered_heading(text)
-        if not split:
+        if split:
+            number, title = split
+            outline.append(NumberedHeading(depth=depth, number=number, title=title))
             continue
-        number, title = split
-        outline.append(NumberedHeading(depth=depth, number=number, title=title))
+        if include_unnumbered:
+            outline.append(NumberedHeading(depth=depth, number="", title=text))
 
     return outline
 
 
-def gather_numbered_heading_map(order: list[str], max_nesting_level: int) -> dict[str, list[NumberedHeading]]:
+def gather_numbered_heading_map(
+    order: list[str],
+    max_nesting_level: int,
+    *,
+    include_unnumbered: bool = False,
+) -> dict[str, list[NumberedHeading]]:
     heading_map: dict[str, list[NumberedHeading]] = {}
     for rel_path in order:
         if not rel_path.endswith(".md"):
@@ -477,9 +731,14 @@ def gather_numbered_heading_map(order: list[str], max_nesting_level: int) -> dic
         if not (
             rel_path.startswith("chapters/")
             or rel_path.startswith("appendices/")
+            or rel_path.startswith("annexes/")
         ):
             continue
-        outline = extract_numbered_headings(rel_path, max_nesting_level)
+        outline = extract_numbered_headings(
+            rel_path,
+            max_nesting_level,
+            include_unnumbered=include_unnumbered,
+        )
         if outline:
             heading_map[rel_path] = outline
     return heading_map
@@ -690,20 +949,22 @@ def build_chapter_entries(
     return chapters, sidebars, bridges, epilogue_present
 
 
-def build_appendix_entries(order: list[str], appendix_labels: dict[str, str]) -> list[dict[str, str | None]]:
+def build_appendix_entries(
+    order: list[str],
+    appendix_labels: dict[str, str],
+    annex_source_paths: set[str],
+) -> list[dict[str, str | None]]:
     entries: list[dict[str, str | None]] = []
     for rel_path in order:
+        if normalize_path(rel_path).lower() in annex_source_paths:
+            continue
         if not rel_path.startswith("appendices/"):
             continue
         label = appendix_labels.get(rel_path)
         meta = None
         stem_label = Path(rel_path).stem.replace("_", " ")
         fallback_code = None
-        fallback_title = None
-        stem_match = APPENDIX_RE.match(stem_label)
-        if stem_match:
-            fallback_code = f"Appendix {stem_match.group(1).upper()}."
-            fallback_title = stem_match.group(2).strip()
+        fallback_title = stem_label
         if not label:
             meta = infer_document_meta(rel_path)
             if fallback_code and not meta.code:
@@ -729,16 +990,57 @@ def build_appendix_entries(order: list[str], appendix_labels: dict[str, str]) ->
     return entries
 
 
+def build_annex_entries(
+    order: list[str],
+    annex_labels: dict[str, str],
+    annex_source_paths: set[str],
+) -> list[dict[str, str | None]]:
+    entries: list[dict[str, str | None]] = []
+    for rel_path in order:
+        if not (
+            rel_path.startswith("annexes/")
+            or normalize_path(rel_path).lower() in annex_source_paths
+        ):
+            continue
+        label = annex_labels.get(rel_path)
+        meta = None
+        stem_label = Path(rel_path).stem.replace("_", " ")
+        fallback_title = stem_label
+        if not label:
+            meta = infer_document_meta(rel_path)
+            title = meta.title or fallback_title or Path(rel_path).stem.replace("_", " ")
+            if meta.code:
+                label = f"{meta.code} {title}" if title else meta.code
+            else:
+                label = title
+        label = normalize_whitespace(label)
+        if label:
+            if meta is None:
+                meta = infer_document_meta(rel_path)
+            entries.append(
+                {
+                    "label": label,
+                    "subtitle": normalize_whitespace(meta.subtitle),
+                    "path": rel_path,
+                }
+            )
+    return entries
+
+
 def render_toc(
     order: list[str],
     front_labels: dict[str, str],
     chapter_labels: dict[str, tuple[str, str]],
     sidebar_labels: dict[str, str],
     appendix_labels: dict[str, str],
+    annex_labels: dict[str, str],
+    annex_source_paths: set[str],
+    annex_summaries: list[dict[str, str | None]],
     part_meta: OrderedDict[str, dict[str, str]],
     *,
     max_depth: int,
     include_appendices: bool,
+    include_annexes_section: bool,
     heading_map: dict[str, list[NumberedHeading]],
     expanded_enabled: bool,
 ) -> str:
@@ -746,7 +1048,8 @@ def render_toc(
     chapter_entries, sidebar_entries, bridge_entries, has_epilogue = build_chapter_entries(
         order, chapter_labels, sidebar_labels, part_meta
     )
-    appendix_entries = build_appendix_entries(order, appendix_labels)
+    appendix_entries = build_appendix_entries(order, appendix_labels, annex_source_paths)
+    annex_entries = build_annex_entries(order, annex_labels, annex_source_paths)
 
     lines: list[str] = []
     if TOC_RUNNING_HEADER_LABEL:
@@ -808,7 +1111,24 @@ def render_toc(
         lines.append(f"## **{TOC_EPILOGUE_LABEL}**\n")
         lines.append("\n------\n")
 
-    if include_appendices:
+    def _render_annexes() -> None:
+        if not (include_annexes_section and ANNEX_INCLUDE_IN_TOC and annex_entries):
+            return
+        lines.append(f"## **{TOC_ANNEXES_LABEL}**\n")
+        if max_depth >= 2:
+            for annex in annex_entries:
+                lines.append(f"**{annex['label']}**")
+                if annex["subtitle"]:
+                    lines.append(f"*{annex['subtitle']}*")
+                if expanded_enabled:
+                    outline = heading_map.get(annex.get("path"))
+                    if outline:
+                        lines.extend(format_heading_outline(outline))
+                lines.append("")
+
+    def _render_appendices() -> None:
+        if not include_appendices:
+            return
         lines.append(f"## **{TOC_APPENDICES_LABEL}**\n")
         if appendix_entries and max_depth >= 2:
             for appendix in appendix_entries:
@@ -821,6 +1141,62 @@ def render_toc(
                         lines.extend(format_heading_outline(outline))
                 lines.append("")
 
+    if ANNEX_POSITION_AFTER_APPENDICES:
+        _render_appendices()
+        _render_annexes()
+    else:
+        _render_annexes()
+        _render_appendices()
+
+    if (not include_annexes_section) and ANNEX_TOC_LINE_ITEM:
+        lines.append("")
+        lines.append(f"## **{TOC_ANNEXES_LABEL}**\n")
+        for annex in annex_summaries:
+            lines.append(f"**{annex['label']}**")
+            if annex.get("subtitle"):
+                lines.append(f"*{annex['subtitle']}*")
+            lines.append("")
+
+    lines.append(":::\n")
+    return "\n".join(lines)
+
+
+def render_annex_toc(
+    annex_id: str,
+    order: list[str],
+    annex_labels: dict[str, str],
+    annex_source_paths: set[str],
+    *,
+    heading_map: dict[str, list[NumberedHeading]],
+    expanded_enabled: bool,
+    heading_title: str | None,
+    running_header: str | None,
+) -> str:
+    annex_entries = build_annex_entries(order, annex_labels, annex_source_paths)
+
+    lines: list[str] = []
+
+    div_tokens = [".frontmatter", ".toc"]
+    if running_header:
+        safe_label = running_header.replace('"', "'")
+        div_tokens.append(f'data-running-head="{safe_label}"')
+
+    lines.append(f"::: {{{' '.join(div_tokens)}}}")
+    if heading_title:
+        lines.append(f"# **{heading_title}**\n")
+    lines.append("------\n")
+
+    if annex_entries:
+        for annex in annex_entries:
+            lines.append(f"**{annex['label']}**")
+            if annex["subtitle"]:
+                lines.append(f"*{annex['subtitle']}*")
+            if expanded_enabled:
+                outline = heading_map.get(annex.get("path"))
+                if outline:
+                    lines.extend(format_heading_outline(outline))
+            lines.append("")
+
     lines.append(":::\n")
     return "\n".join(lines)
 
@@ -831,25 +1207,127 @@ def main() -> None:
         return
 
     ensure_directory_tags()
-    order, front_labels, chapter_labels, sidebar_labels, appendix_labels = parse_book_order()
+    (
+        order,
+        front_labels,
+        chapter_labels,
+        sidebar_labels,
+        appendix_labels,
+        annex_labels,
+        annex_source_paths,
+        annex_entries_by_id,
+        annex_source_paths_by_id,
+        annex_toc_in_order,
+        annex_dir_by_id,
+    ) = parse_book_order()
+
+    annex_summaries: list[dict[str, str | None]] = []
+    for annex_id, entries in annex_entries_by_id.items():
+        if not entries:
+            continue
+        preferred = None
+        for entry in entries:
+            if entry.startswith("parts/") or entry.startswith("annexes/"):
+                preferred = entry
+                break
+        target = preferred or entries[0]
+        label = annex_labels.get(target)
+        meta = None
+        if not label:
+            meta = infer_document_meta(target)
+            label = meta.title
+        label = normalize_whitespace(label or "")
+        if not label:
+            label = Path(target).stem.replace("_", " ")
+        if meta is None:
+            meta = infer_document_meta(target)
+        annex_summaries.append(
+            {
+                "label": label,
+                "subtitle": normalize_whitespace(meta.subtitle),
+            }
+        )
     part_meta = derive_part_meta(order)
     heading_map: dict[str, list[NumberedHeading]] = {}
     if TOC_EXPANDED_ENABLED:
-        heading_map = gather_numbered_heading_map(order, TOC_EXPANDED_MAX_NESTING)
+        heading_map = gather_numbered_heading_map(
+            order,
+            TOC_EXPANDED_MAX_NESTING,
+            include_unnumbered=TOC_EXPANDED_INCLUDE_UNNUMBERED,
+        )
+    include_annexes_section = ANNEX_TOC_MODE == "embedded" and not annex_toc_in_order
+
     toc_md = render_toc(
         order,
         front_labels,
         chapter_labels,
         sidebar_labels,
         appendix_labels,
+        annex_labels,
+        annex_source_paths,
+        annex_summaries,
         part_meta,
         max_depth=TOC_MAX_DEPTH,
         include_appendices=TOC_INCLUDE_APPENDICES,
+        include_annexes_section=include_annexes_section,
         heading_map=heading_map,
         expanded_enabled=TOC_EXPANDED_ENABLED,
     )
     TOC_PATH.parent.mkdir(parents=True, exist_ok=True)
     TOC_PATH.write_text(toc_md, encoding="utf-8")
+
+    if ANNEX_TOC_MODE == "external" and annex_entries_by_id:
+        for annex_id, annex_order in annex_entries_by_id.items():
+            annex_paths = annex_source_paths_by_id.get(annex_id, set())
+            if not annex_order:
+                continue
+            annex_overrides = _load_annex_toc_overrides(annex_dir_by_id.get(annex_id, ROOT))
+            annex_heading_title = _config_str(
+                annex_overrides.get("heading_title"),
+                ANNEX_TOC_HEADING_TITLE,
+            )
+            annex_running_header = _config_str(
+                annex_overrides.get("running_header"),
+                ANNEX_TOC_RUNNING_HEADER,
+            )
+            annex_expanded_settings = annex_overrides.get("expanded_sections") or {}
+            annex_expanded = _config_bool(
+                annex_expanded_settings.get("enabled"),
+                TOC_EXPANDED_ENABLED,
+            )
+            annex_include_unnumbered = _config_bool(
+                annex_expanded_settings.get("include_unnumbered"),
+                True,
+            )
+            annex_max_nesting = _config_int(
+                annex_expanded_settings.get("max_nesting_level"),
+                TOC_EXPANDED_MAX_NESTING,
+                minimum=1,
+                maximum=6,
+            )
+            annex_heading_map: dict[str, list[NumberedHeading]] = {}
+            if annex_expanded:
+                annex_heading_map = gather_numbered_heading_map(
+                    annex_order,
+                    annex_max_nesting,
+                    include_unnumbered=annex_include_unnumbered,
+                )
+
+            annex_toc_md = render_annex_toc(
+                annex_id,
+                annex_order,
+                annex_labels,
+                annex_paths,
+                heading_map=annex_heading_map,
+                expanded_enabled=annex_expanded,
+                heading_title=annex_heading_title,
+                running_header=annex_running_header,
+            )
+
+            output_rel = ANNEX_TOC_OUTPUT_PATTERN.format(annex_id=annex_id)
+            output_path = ROOT / output_rel
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(annex_toc_md, encoding="utf-8")
 
 
 if __name__ == "__main__":

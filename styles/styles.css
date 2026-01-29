@@ -289,6 +289,27 @@ h2[epub|type~="subchapter"] {
   --note-marker-bg: rgba(59, 110, 168, 0.16);
 }
 
+[epub|type~="note"].integration {
+  --note-border-color: #0f766e;
+  --note-background-color: #e8f7f6;
+  --note-marker-color: #0b4f4a;
+  --note-marker-bg: rgba(15, 118, 110, 0.16);
+}
+
+[epub|type~="note"].responsibility {
+  --note-border-color: #b45309;
+  --note-background-color: #fff4e6;
+  --note-marker-color: #7c2d12;
+  --note-marker-bg: rgba(180, 83, 9, 0.16);
+}
+
+[epub|type~="note"].reflexive {
+  --note-border-color: #64748b;
+  --note-background-color: #eff2f7;
+  --note-marker-color: #334155;
+  --note-marker-bg: rgba(100, 116, 139, 0.16);
+}
+
 [epub|type~="note"].synthesis {
   --note-border-color: #2f855a;
   --note-background-color: #e7f7ef;
@@ -486,6 +507,18 @@ h2[epub|type~="subchapter"] {
 
 [epub|type~="note"].usage::before {
   content: "⚙";
+}
+
+[epub|type~="note"].integration::before {
+  content: "∞";
+}
+
+[epub|type~="note"].responsibility::before {
+  content: "⚖";
+}
+
+[epub|type~="note"].reflexive::before {
+  content: "⟲";
 }
 
 [epub|type~="note"].synthesis::before {
