@@ -1648,6 +1648,14 @@ def read_book_order() -> list[str]:
             return False
         if PROFILE and PROFILE.name and PROFILE.name in ANNEX_IDS:
             return False
+        # Skip annex inclusion if the current profile's order file is inside annexes/
+        if PROFILE and PROFILE.order_file:
+            annexes_dir = ROOT / "annexes"
+            try:
+                PROFILE.order_file.relative_to(annexes_dir)
+                return False
+            except ValueError:
+                pass
         return True
 
     def _resolve_annex_order_paths() -> list[Path]:
