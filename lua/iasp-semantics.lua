@@ -19,6 +19,8 @@ package.path = package.path .. ";" .. script_dir .. "/?.lua;" .. script_dir .. "
 local meta = require("iasp.metadata")
 local shorthand = require("iasp.shorthand")
 local include = require("iasp.include")
+local table_appearance = require("iasp.table_appearance")
+local latex_helpers = require("iasp.latex")
 
 local meta_value = meta.meta_value
 local truthy_string = meta.truthy_string
@@ -35,13 +37,21 @@ local build_stage_cache = nil
 local identifier_registry = {}
 local note_variant
 local note_variant_badge_label
+local table_helpers
 local function preprocess_shorthand(doc)
   build_stage_cache = nil
   identifier_registry = {}
   return shorthand.preprocess_shorthand(doc, meta.capture_document_meta)
 end
 
-local convert_shorthand_blocks = shorthand.convert_shorthand_blocks
+local function add_unique(tbl, value)
+  for _, existing in ipairs(tbl) do
+    if existing == value then
+      return
+    end
+  end
+  table.insert(tbl, value)
+end
 
 local function enforce_section_visibility(el)
   if not el or not el.classes then
@@ -141,37 +151,6 @@ local function enforce_stage_visibility(el)
   return true, mutated
 end
 
--- Helper: does this element's attributes include a given epub:type?
-local function has_epub_type(attr, target)
-  local val = attr and attr["epub:type"]
-  if not val then return false end
-  for token in val:gmatch("%S+") do
-    if token == target then
-      return true
-    end
-  end
-  return false
-end
-
-local function wrap_in_env(div, env_name)
-  local blocks = {}
-  table.insert(blocks, pandoc.RawBlock("latex", "\\begin{" .. env_name .. "}\n"))
-  for _, b in ipairs(div.content) do
-    table.insert(blocks, b)
-  end
-  table.insert(blocks, pandoc.RawBlock("latex", "\\end{" .. env_name .. "}\n"))
-  return blocks
-end
-
-local function add_unique(tbl, value)
-  for _, existing in ipairs(tbl) do
-    if existing == value then
-      return
-    end
-  end
-  table.insert(tbl, value)
-end
-
 local function slugify_identifier_source(raw)
   if not raw or raw == "" then
     return nil
@@ -248,6 +227,29 @@ local function has_class(el, class_name)
   return false
 end
 
+-- Helper: does this element's attributes include a given epub:type?
+local function has_epub_type(attr, target)
+  local val = attr and attr["epub:type"]
+  if not val then return false end
+  for token in val:gmatch("%S+") do
+    if token == target then
+      return true
+    end
+  end
+  return false
+end
+
+local function wrap_in_env(div, env_name)
+  local blocks = {}
+  table.insert(blocks, pandoc.RawBlock("latex", "\\begin{" .. env_name .. "}\n"))
+  for _, b in ipairs(div.content) do
+    table.insert(blocks, b)
+  end
+  table.insert(blocks, pandoc.RawBlock("latex", "\\end{" .. env_name .. "}\n"))
+  return blocks
+end
+
+
 local function span_with_classes(inlines, classes)
   local class_list
   if type(classes) == "string" then
@@ -257,6 +259,7 @@ local function span_with_classes(inlines, classes)
   end
   return pandoc.Span(inlines, pandoc.Attr("", class_list, {}))
 end
+
 
 local function is_trivial_raw_latex(block)
   if not block or block.t ~= "RawBlock" or block.format ~= "latex" then
@@ -640,133 +643,7 @@ local function has_local_glyph_hint(div)
   return false
 end
 
-local function count_table_rows(table_block)
-  if not table_block or table_block.t ~= "Table" then
-    return 0
-  end
-
-  local count = 0
-  local head = table_block.head
-  if head and head.rows then
-    count = count + #head.rows
-  end
-  local bodies = table_block.bodies
-  if bodies then
-    for _, body in ipairs(bodies) do
-      if body.rows then
-        count = count + #body.rows
-      end
-    end
-  end
-  local foot = table_block.foot
-  if foot and foot.rows then
-    count = count + #foot.rows
-  end
-
-  return count
-end
-
-local function count_table_columns(table_block)
-  if not table_block or table_block.t ~= "Table" then
-    return 0
-  end
-
-  if table_block.colspecs then
-    return #table_block.colspecs
-  end
-
-  local c = table_block.c
-  if type(c) == "table" and type(c[2]) == "table" then
-    return #c[2]
-  end
-
-  return 0
-end
-
-local function div_table_column_count(div)
-  if not div or not div.content then
-    return 0
-  end
-  local max_cols = 0
-  for _, block in ipairs(div.content) do
-    if block.t == "Table" then
-      local cols = count_table_columns(block)
-      if cols > max_cols then
-        max_cols = cols
-      end
-    end
-  end
-  return max_cols
-end
-
-local function apply_table_appearance(div, format_hint)
-  if not div or not div.content then
-    return false
-  end
-
-  local wants_compact = has_class(div, "table-compact")
-  local wants_striped = has_class(div, "table-striped")
-  local wants_bordered = has_class(div, "table-bordered")
-
-  if not (wants_compact or wants_striped or wants_bordered) then
-    return false
-  end
-
-  if not format_hint:match("latex") then
-    return false
-  end
-
-  local updated = false
-  local next_blocks = {}
-
-  for _, block in ipairs(div.content) do
-    if block.t == "Table" then
-      if wants_compact then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactStart\n"))
-      end
-      if wants_bordered then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\begin{iaspTableBordered}\n"))
-      end
-      if wants_striped then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableStripedStart\n"))
-      end
-
-      table.insert(next_blocks, block)
-
-      if wants_striped then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableStripedEnd\n"))
-      end
-      if wants_bordered then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\end{iaspTableBordered}\n"))
-      end
-      if wants_compact then
-        table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactEnd\n"))
-      end
-      updated = true
-    else
-      table.insert(next_blocks, block)
-    end
-  end
-
-  if updated then
-    div.content = next_blocks
-  end
-
-  return updated
-end
-
-local function div_table_row_count(div)
-  if not div or not div.content then
-    return 0
-  end
-  local total = 0
-  for _, block in ipairs(div.content) do
-    if block.t == "Table" then
-      total = total + count_table_rows(block)
-    end
-  end
-  return total
-end
+-- Table appearance helpers moved to iasp/table_appearance.lua.
 
 local function wants_box_badge(div)
   if not div then
@@ -1541,30 +1418,13 @@ local function handle_div(div)
     or has_class(div, "layout-full-page")
   local has_table_semantics = has_class(div, "table")
 
-  if has_table_semantics and not has_fullpage_layout then
-    local min_rows = table_fullpage_min_rows()
-    if min_rows and min_rows > 0 then
-      local table_rows = div_table_row_count(div)
-      if table_rows >= min_rows then
-        add_unique(div.classes, "layout-fullpage")
-        add_unique(div.classes, "table-fullpage")
-        has_fullpage_layout = true
-        mutated = true
-      end
-    end
-  elseif has_table_semantics and has_fullpage_layout then
-    add_unique(div.classes, "table-fullpage")
-  end
-
-  if has_table_semantics and not has_class(div, "table-compact") then
-    local min_cols = table_compact_min_cols()
-    if min_cols and min_cols > 0 then
-      local columns = div_table_column_count(div)
-      if columns >= min_cols then
-        add_unique(div.classes, "table-compact")
-        mutated = true
-      end
-    end
+  if has_table_semantics then
+    has_fullpage_layout, mutated = table_helpers.apply_table_layout(
+      div,
+      format_hint,
+      has_fullpage_layout,
+      mutated
+    )
   end
 
   if manual_page_break then
@@ -1574,11 +1434,7 @@ local function handle_div(div)
     end
   end
 
-  if has_table_semantics then
-    if apply_table_appearance(div, format_hint) then
-      mutated = true
-    end
-  end
+  -- Table appearance applied by table helpers.
 
   if has_fullpage_layout then
     wants_pre_pagebreak = true
@@ -1681,6 +1537,10 @@ local function handle_div(div)
       )
     end
     return apply_pagebreak_wrappers(blocks, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
+  end
+
+  if has_epub_type(div.attributes, "toc") then
+    return apply_pagebreak_wrappers(wrap_in_env(div, "tocblock"), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
   if has_epub_type(div.attributes, "bridge") then
@@ -1879,6 +1739,13 @@ local function handle_span(span)
   return nil
 end
 
+table_helpers = table_appearance.create({
+  has_class = has_class,
+  add_unique = add_unique,
+  table_fullpage_min_rows = table_fullpage_min_rows,
+  table_compact_min_cols = table_compact_min_cols,
+})
+
 local include_expander = include.create({
   expand_compound_classes = expand_compound_classes,
   enforce_stage_visibility = enforce_stage_visibility,
@@ -1892,79 +1759,13 @@ local include_expander = include.create({
   has_class = has_class,
 })
 
--- Helper used by the LaTeX sidebar post-processor
-local function collect_sidebar_blocks(blocks, i)
-  local collected = {}
-  local h = blocks[i]
-  local level = h.level or 0
-  table.insert(collected, h)
-  i = i + 1
+local latex_wrapper = latex_helpers.create({
+  apply_semantic_aliases = apply_semantic_aliases,
+  has_epub_type = has_epub_type,
+  inject_sidebar_glyph = inject_sidebar_glyph,
+})
 
-  while i <= #blocks do
-    local b = blocks[i]
-
-    if b.t == "HorizontalRule" then
-      i = i + 1
-      break
-    end
-
-    if b.t == "Header" and b.level <= level then
-      break
-    end
-
-    table.insert(collected, b)
-    i = i + 1
-  end
-
-  return collected, i
-end
-
-local function latex_sidebar_wrapper(doc)
-  if not FORMAT:match("latex") then
-    return doc
-  end
-
-  local blocks = doc.blocks
-  local out = {}
-  local i = 1
-
-  while i <= #blocks do
-    local b = blocks[i]
-
-    if b.t == "Header" then
-      apply_semantic_aliases(b)
-
-      if b.attributes and b.attributes["epub:type"] then
-        local is_inline = has_epub_type(b.attributes, "sidebar-inline")
-        if is_inline or has_epub_type(b.attributes, "aside") or has_epub_type(b.attributes, "sidebar") then
-          if is_inline then
-            inject_sidebar_glyph(b)
-          end
-          local collected
-          collected, i = collect_sidebar_blocks(blocks, i)
-
-          local env = is_inline and "sidebartight" or "sidebar"
-          table.insert(out, pandoc.RawBlock("latex", "\\begin{" .. env .. "}"))
-          if not is_inline then
-            table.insert(out, pandoc.RawBlock("latex", "\\sidebarbadge"))
-          end
-          for _, cb in ipairs(collected) do
-            table.insert(out, cb)
-          end
-          table.insert(out, pandoc.RawBlock("latex", "\\end{" .. env .. "}"))
-          goto continue
-        end
-      end
-    end
-
-    table.insert(out, b)
-    i = i + 1
-    ::continue::
-  end
-
-  doc.blocks = out
-  return doc
-end
+-- LaTeX sidebar wrapper moved to iasp/latex.lua.
 
 return {
   { Pandoc = preprocess_shorthand },
@@ -1974,6 +1775,6 @@ return {
     Header = handle_header,
     Span = handle_span,
     Str = replace_meta_placeholders,
-    Pandoc = latex_sidebar_wrapper
+    Pandoc = latex_wrapper.latex_sidebar_wrapper
   }
 }

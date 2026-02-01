@@ -15,6 +15,7 @@
 \usepackage{fancyvrb}
 \usepackage{fvextra} % allow breaklines for Pandoc's Verbatim blocks
 \usepackage{framed}
+\usepackage{enumitem}
 \fvset{breaklines=true,breakanywhere=true}
 \csname tracinglostchars\endcsname=1
 
@@ -53,6 +54,19 @@
   breakanywhere=true
 }
 \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase,Renderer=Harfbuzz}
+
+% --------------------------------------------------
+% TOC list spacing (PDF rendering)
+% --------------------------------------------------
+\newenvironment{tocblock}{%
+  \begingroup%
+  \setlist[itemize,1]{label={},labelsep=0pt,leftmargin=2.1em,itemindent=0pt,listparindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[itemize,2]{label=\textbullet,labelsep=0.35em,labelwidth=1em,leftmargin=2.6em,itemindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[itemize,3]{label=\textbullet,labelsep=0.35em,labelwidth=1em,leftmargin=3.4em,itemindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[enumerate,1]{labelsep=0.35em,labelwidth=1.6em,leftmargin=2.1em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[enumerate,2]{labelsep=0.35em,labelwidth=1.6em,leftmargin=2.9em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[enumerate,3]{labelsep=0.35em,labelwidth=1.6em,leftmargin=3.7em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+}{\endgroup}
 
 % --------------------------------------------------
 % PDF mode switching: 'print' vs 'screen'
@@ -120,6 +134,26 @@
   }%
 }
 \setnoteglyphfont
+
+\newcommand{\setsymbolfont}{%
+  \IfFontExistsTF{Noto Sans Symbols2}{%
+    \newfontfamily\symbolfont{Noto Sans Symbols2}[Scale=MatchLowercase]%
+  }{%
+    \IfFontExistsTF{Noto Sans Symbols}{%
+      \newfontfamily\symbolfont{Noto Sans Symbols}[Scale=MatchLowercase]%
+    }{%
+      \IfFontExistsTF{DejaVu Sans}{%
+        \newfontfamily\symbolfont{DejaVu Sans}[Scale=MatchLowercase]%
+      }{%
+        \newfontfamily\symbolfont{Symbola}[Scale=MatchLowercase]%
+      }%
+    }%
+  }%
+}
+\setsymbolfont
+
+% Ensure U+25D0 (◐) renders from a symbol-capable font
+\newunicodechar{◐}{{\symbolfont◐}}
 
 \newcommand{\setcheckboxfont}{%
   \IfFontExistsTF{Libertinus Serif}{%
@@ -326,6 +360,11 @@
   \gdef\iaspLastChapterMark{\unexpanded{#1}}%%
   \markboth{\unexpanded{#1}}{}%%
   \iaspChapterMarkSeentrue%%
+}
+
+\newcommand{\iaspClearRunningHead}{%%
+  \gdef\iaspLastChapterMark{}%%
+  \markboth{}{}%%
 }
 
 % Use chapter titles for \leftmark (no section marks in header)
@@ -546,6 +585,9 @@
 % --------------------------------------------------
 \definecolor{iaspTableStripe}{HTML}{F3F5F7}
 \definecolor{iaspTableBorder}{HTML}{C9CED6}
+
+% Global table row breathing room
+\renewcommand{\arraystretch}{1.18}
 
 \newcommand{\iaspTableCompactStart}{%
   \begingroup\small%

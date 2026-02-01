@@ -7,6 +7,14 @@ local function has_text(value)
   return value and value:match("%S") ~= nil
 end
 
+local function attr_truthy(value)
+  if value == nil then
+    return false
+  end
+  local lowered = tostring(value):lower()
+  return lowered == "1" or lowered == "true" or lowered == "yes" or lowered == "on"
+end
+
 local function latex_escape(text)
   local replacements = {
     ["\\"] = "\\textbackslash{}",
@@ -25,7 +33,7 @@ local function latex_escape(text)
   end))
 end
 
-local function inject_running_head(blocks, label)
+local function inject_running_head(blocks, label, clear_after)
   local inserted = false
 
   if FORMAT:match("latex") then
@@ -41,6 +49,9 @@ local function inject_running_head(blocks, label)
     end
 
     table.insert(blocks, header_index + 1, pandoc.RawBlock("latex", set_now))
+    if clear_after then
+      table.insert(blocks, pandoc.RawBlock("latex", "\\iaspClearRunningHead"))
+    end
     inserted = true
   end
 
@@ -59,7 +70,13 @@ return {
         return nil
       end
 
-      local inserted = inject_running_head(div.content, label)
+      local persist = div.attributes["data-running-head-persist"]
+      local clear_after = not attr_truthy(persist)
+      if persist ~= nil then
+        div.attributes["data-running-head-persist"] = nil
+      end
+
+      local inserted = inject_running_head(div.content, label, clear_after)
       if inserted then
         div.attributes["data-running-head"] = nil
         return div

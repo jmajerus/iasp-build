@@ -21,6 +21,15 @@ local function normalize_newlines(text)
   return result
 end
 
+local function normalize_heading_indentation(text)
+  if not text then
+    return ""
+  end
+  local result = text:gsub("^[ \t][ \t]?[ \t]?(#+%s)", "%1")
+  result = result:gsub("\n[ \t][ \t]?[ \t]?(#+%s)", "\n%1")
+  return result
+end
+
 local function include_error_blocks(target, reason)
   local message
   if target and target ~= "" then
@@ -205,7 +214,9 @@ function M.create(opts)
   local apply_section_heading_glyph = opts.apply_section_heading_glyph
   local slugify_identifier_source = opts.slugify_identifier_source
   local namespace_header_identifiers = opts.namespace_header_identifiers
-  local convert_shorthand_blocks = opts.convert_shorthand_blocks
+  local convert_shorthand_blocks = opts.convert_shorthand_blocks or function(blocks)
+    return blocks
+  end
 
   local function expand_include_div(div)
     if not opts.has_class(div, "include") then
@@ -469,7 +480,8 @@ function M.create(opts)
       else
         include_stack[include_path] = true
         local ok, included = pcall(function()
-          return pandoc.read(contents, "markdown")
+          local normalized = normalize_heading_indentation(contents)
+          return pandoc.read(normalized, "markdown+fancy_lists+fenced_divs+header_attributes+link_attributes+smart")
         end)
         include_stack[include_path] = nil
 

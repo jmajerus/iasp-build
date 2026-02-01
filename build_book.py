@@ -101,6 +101,8 @@ PDF_PAGE_COUNT_CACHE = BUILD_DIR / "pdf-page-counts.json"
 
 DEFAULT_OUTPUT_BASENAME = "The-Struggle-Against-Dehumanization"
 
+PANDOC_MARKDOWN_INPUT = "markdown+fancy_lists+fenced_divs+header_attributes+link_attributes+smart"
+
 CONFIG = iasp_config.load_config()
 
 
@@ -1793,7 +1795,7 @@ def build_epub(use_filter: bool = True) -> None:
     inputs = read_book_order()
     verify_citations(inputs)
 
-    cmd = ["pandoc", *inputs]
+    cmd = ["pandoc", *inputs, f"--from={PANDOC_MARKDOWN_INPUT}"]
 
     append_metadata_files(cmd)
 
@@ -1835,7 +1837,7 @@ def build_office_format(
     inputs = read_book_order()
     verify_citations(inputs)
 
-    cmd = ["pandoc", *inputs, "--standalone", "--top-level-division=chapter"]
+    cmd = ["pandoc", *inputs, f"--from={PANDOC_MARKDOWN_INPUT}", "--standalone", "--top-level-division=chapter"]
 
     append_metadata_files(cmd)
 
@@ -1876,7 +1878,7 @@ def make_pdf_base_cmd(
     inputs = read_book_order()
     verify_citations(inputs)
 
-    cmd: list[str] = ["pandoc", *inputs]
+    cmd: list[str] = ["pandoc", *inputs, f"--from={PANDOC_MARKDOWN_INPUT}"]
 
     append_metadata_files(cmd)
 
