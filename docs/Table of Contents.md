@@ -57,7 +57,9 @@ The `collect_sidebars` option is cumulative—each level includes the previous:
 | `none` | No sidebars displayed in TOC |
 | `bookorder` | Only sidebars listed in `book-order.txt` (default) |
 | `include` | bookorder + sidebars referenced via `.include` directives in chapter/appendix files |
-| `inline` | include + inline `::: {.sidebar}` fenced blocks with content directly in files |
+| `inline` | include + inline `::: {.sidebar}` fenced blocks with H1-H6 headings |
+
+**Note:** Only sidebars with actual Markdown headings (`#` through `######`) are collected. Standalone bold text (`**Title**`) without heading markers is not considered a title.
 
 Example:
 ```yaml
@@ -70,6 +72,45 @@ toc:
 #### Appendix Sidebar Section
 
 When `appendix_sidebar_section: true` (default), sidebars appearing after the first appendix in `book-order.txt` are collected into a separate "Appendix Sidebars" section rather than being grouped with the last series. Set to `false` to suppress this section.
+
+### Note Collection
+
+Notes can be collected and displayed in the TOC in the same manner as sidebars. This is useful for titled notes that provide important context or methodological guidance.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `collect_notes` | string | `"none"` | Note collection mode (see below) |
+| `appendix_note_section` | bool | `true` | Show separate section for appendix notes |
+| `appendix_note_label` | string | `"Appendix Notes"` | Label for appendix note section |
+
+#### Collection Modes
+
+The `collect_notes` option is cumulative—each level includes the previous:
+
+| Mode | What it collects |
+|------|------------------|
+| `none` | No notes displayed in TOC (default) |
+| `bookorder` | Only notes listed in `book-order.txt` with `# TOC:note` annotations |
+| `include` | bookorder + notes referenced via `.include path="notes/..."` directives |
+| `inline` | include + inline `::: {.note}` fenced blocks with H1-H6 headings |
+
+**Note:** Only notes with actual Markdown headings (`#` through `######`) are collected. Standalone bold text (`**Title**`) without heading markers is not considered a title. This means callout boxes like `::: note.insight` with only bold text are not included in the TOC.
+
+Example:
+```yaml
+toc:
+  collect_notes: inline     # All notes: book-order, includes, and inline
+  appendix_note_section: true
+  appendix_note_label: "Notes"
+```
+
+#### Book-Order Annotations
+
+To include a note from `notes/` in the TOC when using `bookorder` mode:
+```
+notes/Methodological Note.md
+# TOC:note notes/Methodological Note.md = Methodological Note
+```
 
 ### Epilogue Detection
 

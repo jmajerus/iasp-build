@@ -183,6 +183,8 @@ function M.table_fullpage_min_rows()
   return table_fullpage_min_rows_cache
 end
 
+-- Legacy: kept for backward compatibility but no longer used.
+-- Auto-compact now uses content-based width estimation.
 function M.table_compact_min_cols()
   if table_compact_min_cols_cache ~= nil then
     return table_compact_min_cols_cache
@@ -201,6 +203,28 @@ function M.table_compact_min_cols()
 
   table_compact_min_cols_cache = math.floor(value)
   return table_compact_min_cols_cache
+end
+
+local table_auto_compact_cache = nil
+
+function M.table_auto_compact_enabled()
+  if table_auto_compact_cache ~= nil then
+    return table_auto_compact_cache
+  end
+  
+  local raw = M.meta_value("layout-table-auto-compact")
+  if not raw or raw == "" then
+    raw = M.meta_value("table-auto-compact") or M.meta_value("table_auto_compact")
+  end
+  
+  -- Default to true if not specified
+  if raw == nil or raw == "" then
+    table_auto_compact_cache = true
+    return table_auto_compact_cache
+  end
+  
+  table_auto_compact_cache = M.truthy_string(raw)
+  return table_auto_compact_cache
 end
 
 function M.article_build_enabled()

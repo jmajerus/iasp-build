@@ -16,8 +16,20 @@
 \usepackage{fvextra} % allow breaklines for Pandoc's Verbatim blocks
 \usepackage{framed}
 \usepackage{enumitem}
+\usepackage{ltablex}  % Extends longtable with tabularx features
 \fvset{breaklines=true,breakanywhere=true}
 \csname tracinglostchars\endcsname=1
+
+% --------------------------------------------------
+% Force all longtable columns to wrap text properly
+% Redefine column types to use ragged-right paragraph columns
+% --------------------------------------------------
+\usepackage{array}
+\renewcommand{\arraystretch}{1.2}
+% Make 'l' columns behave as wrapping paragraph columns in longtable
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+% Default table font slightly smaller for better fit
+\AtBeginEnvironment{longtable}{\small}
 
 \providecommand{\BodyFontFamily}{TeX Gyre Pagella}
 \providecommand{\HeadingFontFamily}{TeX Gyre Pagella}
@@ -589,10 +601,14 @@
 % Global table row breathing room
 \renewcommand{\arraystretch}{1.18}
 
+% Standard compact: slightly smaller font and tighter padding
 \newcommand{\iaspTableCompactStart}{%
-  \begingroup\small%
-  \setlength{\tabcolsep}{3.5pt}%
-  \renewcommand{\arraystretch}{1.1}%
+  \begingroup\footnotesize%
+  \setlength{\tabcolsep}{2.5pt}%
+  \renewcommand{\arraystretch}{1.05}%
+  % Enable hyphenation and word-wrap in table cells
+  \setlength{\LTpre}{0.5em}%
+  \setlength{\LTpost}{0.5em}%
 }
 \newcommand{\iaspTableCompactEnd}{\endgroup}
 

@@ -1767,6 +1767,56 @@ local latex_wrapper = latex_helpers.create({
 
 -- LaTeX sidebar wrapper moved to iasp/latex.lua.
 
+-- Handle bare tables (not wrapped in .table divs) for auto-compact
+local function handle_table(tbl)
+  local format_hint = (FORMAT or ""):lower()
+  return table_helpers.handle_bare_table(tbl, format_hint)
+end
+
+-- Handle .md links in bundled builds - convert to anchor links
+-- This prevents broken links in EPUB when docs are concatenated
+local function handle_link(link)
+  local target = link.target
+  if not target then return nil end
+  
+  -- Skip external links and already-anchored links
+  if target:match("^https?://") or target:match("^#") or target:match("^mailto:") then
+    return nil
+  end
+  
+  -- Check if this is a .md link
+  if target:match("%.md$") or target:match("%.md#") then
+    -- URL decode spaces
+    local decoded = target:gsub("%%20", " ")
+    
+    -- Check if this is a subdirectory path (contains /)
+    -- These often reference files included with explicit wrapper section anchors
+    -- that we can't reliably auto-generate, so we strip the link
+    if decoded:match("/") and not decoded:match("^%.%./") then
+      -- Return just the text content without the link
+      return pandoc.Span(link.content)
+    end
+    
+    -- Extract the base filename (without path and extension)
+    local base = decoded:gsub(".*/", "")   -- Remove path prefix
+    base = base:gsub("%.md.*$", "")        -- Remove .md and any anchor
+    
+    -- Convert to a slug-style anchor
+    local anchor = base:lower():gsub("%s+", "-"):gsub("[^%w%-]", "")
+    
+    -- Preserve any existing anchor fragment
+    local fragment = target:match("#(.+)$")
+    if fragment then
+      link.target = "#" .. fragment
+    else
+      link.target = "#" .. anchor
+    end
+    return link
+  end
+  
+  return nil
+end
+
 return {
   { Pandoc = preprocess_shorthand },
   { Div = include_expander.expand_include_div },
@@ -1775,6 +1825,8 @@ return {
     Header = handle_header,
     Span = handle_span,
     Str = replace_meta_placeholders,
+    Table = handle_table,
+    Link = handle_link,
     Pandoc = latex_wrapper.latex_sidebar_wrapper
   }
 }

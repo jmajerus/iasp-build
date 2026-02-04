@@ -191,8 +191,6 @@ def _resolve_annex_settings() -> dict[str, Any]:
 
 ANNEX_SETTINGS = _resolve_annex_settings()
 ANNEX_IDS = _config_list(ANNEX_SETTINGS.get("annex_ids"))
-ANNEX_INCLUDE_INSIDE = _config_bool(ANNEX_SETTINGS.get("include_inside_manuscript"), False)
-ANNEX_POSITION_AFTER_APPENDICES = _config_bool(ANNEX_SETTINGS.get("position_after_appendices"), True)
 
 
 def _discover_annex_orders() -> list[Path]:
@@ -1016,6 +1014,23 @@ def maybe_run_epubcheck(epub_path: Path) -> None:
     run(cmd)
 
 
+# Pattern to match citation spans with nested anchors in nav.xhtml
+CITATION_SPAN_PATTERN = re.compile(
+    r'<span\s+class="citation"[^>]*>.*?</span>',
+    re.DOTALL
+)
+
+
+def _strip_citation_spans_from_nav(text: str) -> tuple[str, int]:
+    """Remove citation spans (which may contain nested anchors) from nav.xhtml.
+    
+    Citations in headings create nested <a> elements in navigation which are
+    invalid in EPUB. This strips the entire citation span.
+    """
+    updated, count = CITATION_SPAN_PATTERN.subn('', text)
+    return updated, count
+
+
 def _collect_epub_id_targets(zf: zipfile.ZipFile) -> dict[str, str]:
     targets: dict[str, str] = {}
     for item in zf.infolist():
@@ -1561,6 +1576,7 @@ def repair_epub_navigation(epub_path: Path) -> None:
     toc_updated: str | None = None
     nav_fixes = toc_fixes = 0
     nav_added = toc_added = 0
+    citation_strips = 0
     nav_changed = toc_changed = False
     missing_ids: set[str] = set()
 
@@ -1595,6 +1611,8 @@ def repair_epub_navigation(epub_path: Path) -> None:
                     spine_hrefs,
                     heading_cache,
                 )
+                # Strip citation spans which may contain nested anchors (invalid in EPUB nav)
+                nav_updated, citation_strips = _strip_citation_spans_from_nav(nav_updated)
                 nav_changed = nav_raw != nav_updated
 
             if toc_raw:
@@ -1611,7 +1629,7 @@ def repair_epub_navigation(epub_path: Path) -> None:
         print("-- Unable to inspect EPUB archive; skipping nav/toc repair.")
         return
 
-    if (nav_fixes + toc_fixes + nav_added + toc_added) == 0 and not nav_changed and not toc_changed:
+    if (nav_fixes + toc_fixes + nav_added + toc_added + citation_strips) == 0 and not nav_changed and not toc_changed:
         if missing_ids:
             print(f"-- Warning: {len(missing_ids)} nav/toc ids missing chapter targets: {sorted(missing_ids)[:5]}...")
         return
@@ -1621,7 +1639,9 @@ def repair_epub_navigation(epub_path: Path) -> None:
         print(f"-- Updated {nav_fixes} entries in nav.xhtml")
     if nav_added:
         print(f"-- Added {nav_added} missing chapters to nav.xhtml")
-    if nav_changed and not (nav_fixes or nav_added):
+    if citation_strips:
+        print(f"-- Stripped {citation_strips} citation spans from nav.xhtml (nested anchors)")
+    if nav_changed and not (nav_fixes or nav_added or citation_strips):
         print("-- Rebuilt nav.xhtml to match spine order")
     if toc_fixes:
         print(f"-- Updated {toc_fixes} entries in toc.ncx")
@@ -1643,146 +1663,11 @@ def read_book_order() -> list[str]:
     - Ignores blank lines
     - Ignores lines starting with '#'
     """
-    def _should_include_annexes() -> bool:
-        if not ANNEX_INCLUDE_INSIDE:
-            return False
-        if PROFILE and PROFILE.name and PROFILE.name in ANNEX_IDS:
-            return False
-        # Skip annex inclusion if the current profile's order file is inside annexes/
-        if PROFILE and PROFILE.order_file:
-            annexes_dir = ROOT / "annexes"
-            try:
-                PROFILE.order_file.relative_to(annexes_dir)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    def _resolve_annex_order_paths() -> list[Path]:
-        annex_ids = list(ANNEX_IDS)
-        if not annex_ids:
-            return _discover_annex_orders()
-
-        definitions = _read_profile_definitions()
-        resolved: list[Path] = []
-        seen: set[Path] = set()
-
-        discovered = {path.resolve() for path in _discover_annex_orders()}
-
-        for annex_id in annex_ids:
-            entry = definitions.get(annex_id)
-            order_value = None
-            if isinstance(entry, dict):
-                order_value = entry.get("order_file") or entry.get("order")
-
-            if order_value:
-                order_path = _resolve_profile_path(str(order_value))
-            else:
-                order_path = _resolve_profile_path(str(annex_id))
-
-            if not order_path.exists() and not order_path.is_absolute():
-                fallback = ROOT / "annexes" / str(annex_id) / "book-order.txt"
-                if fallback.exists():
-                    order_path = fallback.resolve()
-
-            if order_path == BOOK_ORDER:
-                continue
-
-            if not order_path.exists():
-                print(
-                    "-- Warning: annex order not found for "
-                    f"'{annex_id}'. Looked at {order_path}. "
-                    "If this is a profile ID, add it to build-profiles.json; "
-                    "otherwise set annex_ids to the order file path."
-                )
-                continue
-
-            if order_path not in seen:
-                resolved.append(order_path)
-                seen.add(order_path)
-
-        for path in discovered:
-            if path not in seen:
-                resolved.append(path)
-                seen.add(path)
-
-        return resolved
-
-    def _merge_label_map(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
-        merged = dict(base)
-        for key, value in extra.items():
-            if key not in merged:
-                merged[key] = value
-        return merged
-
-    def _merge_orders(base: BookOrderData, annexes: list[BookOrderData]) -> BookOrderData:
-        annex_entries: list[str] = []
-        for annex in annexes:
-            annex_entries.extend(annex.entries)
-
-        if not annex_entries:
-            return base
-
-        entries = list(base.entries)
-        base_set = {normalize_path(entry).lower() for entry in entries}
-        annex_deduped: list[str] = []
-        duplicates: list[str] = []
-        for entry in annex_entries:
-            key = normalize_path(entry).lower()
-            if key in base_set:
-                duplicates.append(entry)
-                continue
-            annex_deduped.append(entry)
-
-        if duplicates:
-            sample = ", ".join(duplicates[:5])
-            print(
-                "-- Warning: annex order entries already exist in main order; "
-                f"skipping {len(duplicates)} duplicate(s). Sample: {sample}"
-            )
-        appendices = [
-            idx
-            for idx, entry in enumerate(entries)
-            if normalize_path(entry).lower().startswith("appendices/")
-        ]
-
-        if ANNEX_POSITION_AFTER_APPENDICES:
-            insert_at = appendices[-1] + 1 if appendices else len(entries)
-        else:
-            insert_at = appendices[0] if appendices else len(entries)
-
-        if annex_deduped:
-            entries[insert_at:insert_at] = annex_deduped
-
-        front_labels = dict(base.front_labels)
-        chapter_labels = dict(base.chapter_labels)
-        sidebar_labels = dict(base.sidebar_labels)
-        appendix_labels = dict(base.appendix_labels)
-
-        for annex in annexes:
-            front_labels = _merge_label_map(front_labels, annex.front_labels)
-            chapter_labels = _merge_label_map(chapter_labels, annex.chapter_labels)
-            sidebar_labels = _merge_label_map(sidebar_labels, annex.sidebar_labels)
-            appendix_labels = _merge_label_map(appendix_labels, annex.appendix_labels)
-
-        return BookOrderData(entries, front_labels, chapter_labels, sidebar_labels, appendix_labels)
-
     try:
         order_data = load_book_order(BOOK_ORDER)
     except FileNotFoundError:
         print(f"!! book-order.txt not found at {BOOK_ORDER}")
         sys.exit(1)
-
-    if _should_include_annexes():
-        annex_paths = _resolve_annex_order_paths()
-        annex_orders: list[BookOrderData] = []
-        for path in annex_paths:
-            try:
-                annex_orders.append(load_book_order(path))
-            except FileNotFoundError:
-                print(f"-- Warning: annex order file missing at {path}")
-        if annex_orders:
-            order_data = _merge_orders(order_data, annex_orders)
 
     order_nodes = walk_order_entries(order_data, ROOT)
     inputs = flatten_nodes(order_nodes)
@@ -1897,6 +1782,7 @@ def make_pdf_base_cmd(
     cmd += [
         "--top-level-division=chapter",
         "--pdf-engine=xelatex",  # ignored when -t latex, fine to leave
+        "--columns=50",  # Force wrapping table columns in LaTeX output
     ]
 
     headers = [BLOCKQUOTE_STYLE]

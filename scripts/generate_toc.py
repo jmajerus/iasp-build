@@ -189,6 +189,8 @@ TOC_FRONTMATTER_LABEL = _config_str(TOC_SETTINGS.get("frontmatter_label"), "Fron
 TOC_APPENDICES_LABEL = _config_str(TOC_SETTINGS.get("appendices_label"), "Appendices")
 TOC_APPENDIX_SIDEBAR_SECTION = _config_bool(TOC_SETTINGS.get("appendix_sidebar_section"), True)
 TOC_APPENDIX_SIDEBAR_LABEL = _config_str(TOC_SETTINGS.get("appendix_sidebar_label"), "Appendix Sidebars")
+TOC_APPENDIX_NOTE_SECTION = _config_bool(TOC_SETTINGS.get("appendix_note_section"), True)
+TOC_APPENDIX_NOTE_LABEL = _config_str(TOC_SETTINGS.get("appendix_note_label"), "Appendix Notes")
 
 # Sidebar collection mode: none, bookorder, include, inline (cumulative)
 # - none: no sidebars displayed
@@ -197,6 +199,14 @@ TOC_APPENDIX_SIDEBAR_LABEL = _config_str(TOC_SETTINGS.get("appendix_sidebar_labe
 # - inline: bookorder + include + inline ::: {.sidebar} fenced blocks
 _TOC_COLLECT_SIDEBARS_RAW = _config_str(TOC_SETTINGS.get("collect_sidebars"), "bookorder").lower().strip()
 TOC_COLLECT_SIDEBARS = _TOC_COLLECT_SIDEBARS_RAW if _TOC_COLLECT_SIDEBARS_RAW in ("none", "bookorder", "include", "inline") else "bookorder"
+
+# Note collection mode: none, bookorder, include, inline (cumulative)
+# - none: no notes displayed
+# - bookorder: only notes from book-order.txt (default)
+# - include: bookorder + notes referenced via .include directives
+# - inline: bookorder + include + inline ::: {.note} fenced blocks
+_TOC_COLLECT_NOTES_RAW = _config_str(TOC_SETTINGS.get("collect_notes"), "none").lower().strip()
+TOC_COLLECT_NOTES = _TOC_COLLECT_NOTES_RAW if _TOC_COLLECT_NOTES_RAW in ("none", "bookorder", "include", "inline") else "none"
 
 TOC_EPILOGUE_LABEL = _config_str(TOC_SETTINGS.get("epilogue_label"), "Epilogue")
 TOC_EPILOGUE_PATHS = set(_config_list(TOC_SETTINGS.get("epilogue_paths")))
@@ -464,16 +474,19 @@ def parse_book_order() -> tuple[
     dict[str, str],
     dict[str, str],
     dict[str, str],
+    dict[str, str],
     set[str],
     dict[str, list[str]],
     dict[str, set[str]],
     bool,
     dict[str, Path],
+    set[str],  # main_body_paths - paths from the main order file (not annexes)
 ]:
     paths: list[str] = []
     front_labels: dict[str, str] = {}
     chapter_labels: dict[str, tuple[str, str]] = {}
     sidebar_labels: dict[str, str] = {}
+    note_labels: dict[str, str] = {}
     appendix_labels: dict[str, str] = {}
     annex_labels: dict[str, str] = {}
     annex_source_paths: set[str] = set()
@@ -481,6 +494,7 @@ def parse_book_order() -> tuple[
     annex_source_paths_by_id: dict[str, set[str]] = {}
     annex_toc_in_order = False
     annex_dir_by_id: dict[str, Path] = {}
+    main_body_paths: set[str] = set()
 
     def _merge_label_map(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
         merged = dict(base)
@@ -496,16 +510,18 @@ def parse_book_order() -> tuple[
         dict[str, str],
         dict[str, str],
         dict[str, str],
+        dict[str, str],
     ]:
         file_paths: list[str] = []
         file_front: dict[str, str] = {}
         file_chapter: dict[str, tuple[str, str]] = {}
         file_sidebar: dict[str, str] = {}
+        file_note: dict[str, str] = {}
         file_appendix: dict[str, str] = {}
         file_annex: dict[str, str] = {}
 
         if not order_path.exists():
-            return file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex
+            return file_paths, file_front, file_chapter, file_sidebar, file_note, file_appendix, file_annex
 
         for raw in order_path.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
@@ -541,6 +557,15 @@ def parse_book_order() -> tuple[
                     pass
                 continue
 
+            if line.startswith("# TOC:note"):
+                try:
+                    _, rest = line.split("# TOC:note", 1)
+                    path_part, label = rest.split("=", 1)
+                    file_note[path_part.strip()] = label.strip()
+                except ValueError:
+                    pass
+                continue
+
             if line.startswith("# TOC:appendix"):
                 try:
                     _, rest = line.split("# TOC:appendix", 1)
@@ -564,13 +589,17 @@ def parse_book_order() -> tuple[
 
             file_paths.append(line)
 
-        return file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex
+        return file_paths, file_front, file_chapter, file_sidebar, file_note, file_appendix, file_annex
 
-    main_paths, main_front, main_chapter, main_sidebar, main_appendix, main_annex = _parse_order_file(BOOK_ORDER)
+    main_paths, main_front, main_chapter, main_sidebar, main_note, main_appendix, main_annex = _parse_order_file(BOOK_ORDER)
     paths.extend(main_paths)
+    # Track normalized paths from the main order file (for filtering annex-only content)
+    for p in main_paths:
+        main_body_paths.add(normalize_path(p).lower())
     front_labels.update(main_front)
     chapter_labels.update(main_chapter)
     sidebar_labels.update(main_sidebar)
+    note_labels.update(main_note)
     appendix_labels.update(main_appendix)
     annex_labels.update(main_annex)
 
@@ -624,7 +653,7 @@ def parse_book_order() -> tuple[
         for annex_id, raw_path in annex_paths:
             order_path = Path(raw_path)
             annex_key = Path(annex_id).name or order_path.stem
-            file_paths, file_front, file_chapter, file_sidebar, file_appendix, file_annex = _parse_order_file(
+            file_paths, file_front, file_chapter, file_sidebar, file_note, file_appendix, file_annex = _parse_order_file(
                 order_path
             )
             annex_dir_by_id.setdefault(annex_key, order_path.parent)
@@ -643,6 +672,7 @@ def parse_book_order() -> tuple[
             front_labels = _merge_label_map(front_labels, file_front)
             chapter_labels = _merge_label_map(chapter_labels, file_chapter)
             sidebar_labels = _merge_label_map(sidebar_labels, file_sidebar)
+            note_labels = _merge_label_map(note_labels, file_note)
             appendix_labels = _merge_label_map(appendix_labels, file_appendix)
             annex_labels = _merge_label_map(annex_labels, file_annex)
 
@@ -668,6 +698,7 @@ def parse_book_order() -> tuple[
         front_labels,
         chapter_labels,
         sidebar_labels,
+        note_labels,
         appendix_labels,
         annex_labels,
         annex_source_paths,
@@ -675,6 +706,7 @@ def parse_book_order() -> tuple[
         annex_source_paths_by_id,
         annex_toc_in_order,
         annex_dir_by_id,
+        main_body_paths,
     )
 
 
@@ -1134,11 +1166,15 @@ def normalize_whitespace(text: str | None) -> str | None:
 
 
 # Regex patterns for extracting inline sidebar titles
-# Matches ::: {.sidebar ...} blocks and extracts the first heading
-INLINE_SIDEBAR_START_RE = re.compile(r"^:::\s*\{[^}]*\.sidebar[^}]*\}", re.IGNORECASE)
+# Matches ::: {.sidebar ...} or ::: sidebar... blocks and extracts the first heading
+INLINE_SIDEBAR_START_RE = re.compile(
+    r"^:::(?:\s*\{[^}]*\.sidebar[^}]*\}|\s+sidebar\b)",
+    re.IGNORECASE
+)
 INLINE_SIDEBAR_END_RE = re.compile(r"^:::\s*$")
+# Matches H1-H6 headings: ### **Title** or ### Title
 INLINE_SIDEBAR_HEADING_RE = re.compile(
-    r"^(?:#{1,6}\s*\*\*(.+?)\*\*|\*\*(.+?)\*\*)\s*$"
+    r"^#{1,6}\s*(?:\*\*(.+?)\*\*|(.+))\s*$"
 )
 
 
@@ -1176,7 +1212,7 @@ def extract_inline_sidebar_titles(rel_path: str) -> list[str]:
             if not found_heading:
                 heading_match = INLINE_SIDEBAR_HEADING_RE.match(line.strip())
                 if heading_match:
-                    # Group 1 is ### **Title**, group 2 is just **Title**
+                    # Group 1: ### **Title**, Group 2: ### Title
                     title = heading_match.group(1) or heading_match.group(2)
                     if title:
                         titles.append(normalize_whitespace(title) or title)
@@ -1217,6 +1253,101 @@ def extract_included_sidebar_titles(rel_path: str) -> list[str]:
             sidebar_path = match.group(1)
             # Get the title from the referenced sidebar file
             meta = infer_document_meta(sidebar_path)
+            if meta.title:
+                titles.append(normalize_whitespace(meta.title) or meta.title)
+    
+    return titles
+
+
+# Regex pattern for detecting ::: {.note ...} or ::: note... block start (with any variant classes)
+INLINE_NOTE_START_RE = re.compile(
+    r"^:::(?:.*\{\s*\.note\b|\s+note\b)",
+    re.IGNORECASE
+)
+# End of a fenced div block
+INLINE_NOTE_END_RE = re.compile(r'^:::$')
+# Pattern for extracting a heading from within a note block
+# Matches H1-H6 headings: ### **Title** or ### Title
+INLINE_NOTE_HEADING_RE = re.compile(
+    r"^#{1,6}\s*(?:\*\*(.+?)\*\*|(.+))\s*$"
+)
+
+
+def extract_inline_note_titles(rel_path: str) -> list[str]:
+    """Extract titles from inline note blocks within a file.
+    
+    Inline notes are ::: {.note} or ::: {.note.variant} blocks with a bold heading.
+    Returns a list of note titles found in the file.
+    """
+    abs_path = ROOT / rel_path
+    if not abs_path.exists():
+        return []
+    
+    try:
+        content = abs_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    
+    titles: list[str] = []
+    in_note = False
+    found_heading = False
+    
+    for line in content.splitlines():
+        if INLINE_NOTE_START_RE.match(line):
+            in_note = True
+            found_heading = False
+            continue
+        
+        if in_note:
+            if INLINE_NOTE_END_RE.match(line):
+                in_note = False
+                continue
+            
+            # Only look for heading if we haven't found one yet for this note
+            if not found_heading:
+                heading_match = INLINE_NOTE_HEADING_RE.match(line.strip())
+                if heading_match:
+                    # Group 1: ### **Title**, Group 2: ### Title
+                    title = heading_match.group(1) or heading_match.group(2)
+                    if title:
+                        titles.append(normalize_whitespace(title) or title)
+                        found_heading = True
+    
+    return titles
+
+
+# Regex pattern for extracting note include directive paths
+# Matches ::: {.include path="notes/..."} directives
+INCLUDE_NOTE_RE = re.compile(
+    r'^:::.*\.include.*path\s*=\s*["\']([^"\']*notes/[^"\']+)["\']',
+    re.IGNORECASE
+)
+
+
+def extract_included_note_titles(rel_path: str) -> list[str]:
+    """Extract titles from note files referenced via include directives.
+    
+    Scans for ::: {.include path="notes/..."} directives and extracts
+    the title from each referenced note file.
+    Returns a list of note titles found.
+    """
+    abs_path = ROOT / rel_path
+    if not abs_path.exists():
+        return []
+    
+    try:
+        content = abs_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    
+    titles: list[str] = []
+    
+    for line in content.splitlines():
+        match = INCLUDE_NOTE_RE.match(line.strip())
+        if match:
+            note_path = match.group(1)
+            # Get the title from the referenced note file
+            meta = infer_document_meta(note_path)
             if meta.title:
                 titles.append(normalize_whitespace(meta.title) or meta.title)
     
@@ -1666,20 +1797,26 @@ def build_chapter_entries(
     order: list[str],
     chapter_labels: dict[str, tuple[str, str]],
     sidebar_labels: dict[str, str],
+    note_labels: dict[str, str],
     part_meta: OrderedDict[str, dict[str, str]],
     annex_source_paths: set[str],
+    main_body_paths: set[str],
 ) -> tuple[
     dict[str, list[dict[str, str | None]]],
+    dict[str, list[str]],
     dict[str, list[str]],
     dict[str, list[dict[str, str]]],
     bool,
     list[str],  # appendix_sidebars
+    list[str],  # appendix_notes
 ]:
     part_keys = list(part_meta.keys())
     chapters: dict[str, list[dict[str, str]]] = {k: [] for k in part_keys}
     sidebars: dict[str, list[str]] = {k: [] for k in part_keys}
+    notes: dict[str, list[str]] = {k: [] for k in part_keys}
     bridges: dict[str, list[dict[str, str]]] = {k: [] for k in part_keys}
     appendix_sidebars: list[str] = []
+    appendix_notes: list[str] = []
     epilogue_present = False
     current_part: str | None = None
     in_appendix_section = False
@@ -1735,6 +1872,14 @@ def build_chapter_entries(
             if TOC_COLLECT_SIDEBARS == "inline" and part_id in sidebars:
                 for inline_title in extract_inline_sidebar_titles(rel_path):
                     sidebars[part_id].append(f" • {inline_title}")
+            # Collect notes referenced via include directives
+            if TOC_COLLECT_NOTES in ("include", "inline") and part_id in notes:
+                for included_title in extract_included_note_titles(rel_path):
+                    notes[part_id].append(f" • {included_title}")
+            # Collect inline notes from this chapter
+            if TOC_COLLECT_NOTES == "inline" and part_id in notes:
+                for inline_title in extract_inline_note_titles(rel_path):
+                    notes[part_id].append(f" • {inline_title}")
             continue
 
         if rel_path.startswith(("bridges/", "bridgeheads/")):
@@ -1764,11 +1909,22 @@ def build_chapter_entries(
             if TOC_COLLECT_SIDEBARS == "inline":
                 for inline_title in extract_inline_sidebar_titles(rel_path):
                     appendix_sidebars.append(f" • {inline_title}")
+            # Collect notes referenced via include directives
+            if TOC_COLLECT_NOTES in ("include", "inline"):
+                for included_title in extract_included_note_titles(rel_path):
+                    appendix_notes.append(f" • {included_title}")
+            # Collect inline notes from this appendix
+            if TOC_COLLECT_NOTES == "inline":
+                for inline_title in extract_inline_note_titles(rel_path):
+                    appendix_notes.append(f" • {inline_title}")
             continue
 
         if rel_path.startswith("sidebars/"):
             # Skip if sidebar collection is disabled
             if TOC_COLLECT_SIDEBARS == "none":
+                continue
+            # Only include sidebars that appear in the main body order (not annex-only)
+            if normalize_path(rel_path).lower() not in main_body_paths:
                 continue
             label = sidebar_labels.get(rel_path)
             if not label:
@@ -1784,7 +1940,28 @@ def build_chapter_entries(
                 if label and part_id in sidebars:
                     sidebars[part_id].append(f" • {label}")
 
-    return chapters, sidebars, bridges, epilogue_present, appendix_sidebars
+        if rel_path.startswith("notes/"):
+            # Skip if note collection is disabled
+            if TOC_COLLECT_NOTES == "none":
+                continue
+            # Only include notes that appear in the main body order (not annex-only)
+            if normalize_path(rel_path).lower() not in main_body_paths:
+                continue
+            label = note_labels.get(rel_path)
+            if not label:
+                meta = infer_document_meta(rel_path)
+                label = meta.title
+            label = normalize_whitespace(label)
+            if in_appendix_section:
+                # Notes appearing after first appendix go to appendix note section
+                if label:
+                    appendix_notes.append(f" • {label}")
+            else:
+                part_id = current_part or part_id_from_path(rel_path) or "B"
+                if label and part_id in notes:
+                    notes[part_id].append(f" • {label}")
+
+    return chapters, sidebars, notes, bridges, epilogue_present, appendix_sidebars, appendix_notes
 
 
 def build_appendix_entries(
@@ -1870,6 +2047,7 @@ def render_toc(
     front_labels: dict[str, str],
     chapter_labels: dict[str, tuple[str, str]],
     sidebar_labels: dict[str, str],
+    note_labels: dict[str, str],
     appendix_labels: dict[str, str],
     annex_labels: dict[str, str],
     annex_source_paths: set[str],
@@ -1881,10 +2059,11 @@ def render_toc(
     include_annexes_section: bool,
     heading_map: dict[str, list[NumberedHeading]],
     expanded_options: ExpandedTocOptions,
+    main_body_paths: set[str],
 ) -> str:
     front_entries = build_front_entries(order, front_labels)
-    chapter_entries, sidebar_entries, bridge_entries, has_epilogue, appendix_sidebars = build_chapter_entries(
-        order, chapter_labels, sidebar_labels, part_meta, annex_source_paths
+    chapter_entries, sidebar_entries, note_entries, bridge_entries, has_epilogue, appendix_sidebars, appendix_notes = build_chapter_entries(
+        order, chapter_labels, sidebar_labels, note_labels, part_meta, annex_source_paths, main_body_paths
     )
     appendix_entries = build_appendix_entries(order, appendix_labels, annex_source_paths)
     annex_entries = build_annex_entries(order, annex_labels, annex_source_paths)
@@ -2087,6 +2266,11 @@ def render_toc(
             lines.append(f"**{TOC_APPENDIX_SIDEBAR_LABEL}**")
             lines.extend(appendix_sidebars)
             lines.append("")
+        # Render appendix notes if enabled and present
+        if TOC_APPENDIX_NOTE_SECTION and appendix_notes:
+            lines.append(f"**{TOC_APPENDIX_NOTE_LABEL}**")
+            lines.extend(appendix_notes)
+            lines.append("")
 
     if ANNEX_POSITION_AFTER_APPENDICES:
         _render_appendices()
@@ -2192,6 +2376,7 @@ def main() -> None:
         front_labels,
         chapter_labels,
         sidebar_labels,
+        note_labels,
         appendix_labels,
         annex_labels,
         annex_source_paths,
@@ -2199,6 +2384,7 @@ def main() -> None:
         annex_source_paths_by_id,
         annex_toc_in_order,
         annex_dir_by_id,
+        main_body_paths,
     ) = parse_book_order()
 
     annex_summaries: list[dict[str, str | None]] = []
@@ -2258,6 +2444,7 @@ def main() -> None:
         front_labels,
         chapter_labels,
         sidebar_labels,
+        note_labels,
         appendix_labels,
         annex_labels,
         annex_source_paths,
@@ -2268,6 +2455,7 @@ def main() -> None:
         include_annexes_section=include_annexes_section,
         heading_map=heading_map,
         expanded_options=base_expanded_options,
+        main_body_paths=main_body_paths,
     )
     TOC_PATH.parent.mkdir(parents=True, exist_ok=True)
     TOC_PATH.write_text(toc_md, encoding="utf-8")
