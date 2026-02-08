@@ -31,6 +31,10 @@
 \newcommand{\glyphmisuse}{{\noteglyphfont ✕}}    % note.misuse
 \newcommand{\glyphdiagnostic}{{\noteglyphfont 🔍}} % note.diagnostic
 \newcommand{\glyphclosing}{{\noteglyphfont ∎}}   % note.closing
+\newcommand{\glyphmethodology}{{\noteglyphfont ⊢}} % note.methodology
+\newcommand{\glyphcontext}{{\noteglyphfont ◉}}   % note.context
+\newcommand{\glyphscope}{{\noteglyphfont ◎}}     % note.scope
+\newcommand{\glyphchecklist}{{\noteglyphfont ☐}}   % note.checklist
 
 
 %--------------------------------------------------------------------
@@ -252,6 +256,62 @@
   \endgroup
 }
 
+% 3i. Badge strip header with methodology accent (indigo).
+\newcommand{\noteheaderbadgemethodology}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgmethodology}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3j. Badge strip header with context accent (warm slate).
+\newcommand{\noteheaderbadgecontext}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgcontext}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3k. Badge strip header with scope accent (warm copper).
+\newcommand{\noteheaderbadgescope}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgscope}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
+% 3l. Badge strip header with checklist accent (teal).
+\newcommand{\noteheaderbadgechecklist}[1]{%
+  \begingroup
+  \par\nointerlineskip
+  \vspace{-0.25em}
+  \noindent
+  \expandafter\colorbox\expandafter{\notebadgebgchecklist}{%
+    \rule{0pt}{.10\baselineskip}%
+    \hspace{0.35em}\raisebox{0.5ex}{\large #1}\hspace{0.35em}%
+  }%
+  \par\nointerlineskip
+  \endgroup
+}
+
 
 %--------------------------------------------------------------------
 % Semantic header macros (map semantic types → presentation)
@@ -352,6 +412,26 @@
   \noteheaderbadgeclosing{\glyphclosing}%
 }
 
+% note.methodology → indigo methodology badge
+\newcommand{\headernotemethodology}{%
+  \noteheaderbadgemethodology{\glyphmethodology}%
+}
+
+% note.context → warm slate context badge
+\newcommand{\headernotecontext}{%
+  \noteheaderbadgecontext{\glyphcontext}%
+}
+
+% note.scope → warm copper scope badge
+\newcommand{\headernotescope}{%
+  \noteheaderbadgescope{\glyphscope}%
+}
+
+% note.checklist → teal checklist badge
+\newcommand{\headernotechecklist}{%
+  \noteheaderbadgechecklist{\glyphchecklist}%
+}
+
 
 %--------------------------------------------------------------------
 % Backwards-compatible macros expected by iasp-semantics.lua
@@ -390,6 +470,9 @@
     {misuse}    {\headernotemisuse}
     {diagnostic}{\headernotediagnostic}
     {closing}   {\headernoteclosing}
+    {methodology}{\headernotemethodology}
+    {context}   {\headernotecontext}
+    {scope}     {\headernotescope}
   }{\headernotenote}%
 }
 \ExplSyntaxOff
@@ -620,3 +703,54 @@
   innerrightmargin=0.95em,
 ]{noteboxclosing}
 
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxmethodologyline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxmethodologybg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxmethodology}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxcontextline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxcontextbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxcontext}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxscopeline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxscopebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxscope}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxchecklistline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxchecklistbg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxchecklist}

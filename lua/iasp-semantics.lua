@@ -1185,25 +1185,53 @@ end
 local appendix_started = false
 local first_chapter_seen = false
 
-local NOTE_VARIANTS = {
-  "idea",
-  "insight",
-  "warning",
-  "breadcrumb",
-  "contrast",
-  "transition",
-  "navigation",
-  "bridge",
-  "usage",
-  "integration",
-  "responsibility",
-  "reflexive",
-  "synthesis",
-  "disclosure",
-  "misuse",
-  "diagnostic",
-  "closing",
+-- Note variant configuration table: single source of truth for variant → LaTeX environment mapping
+-- Adding a new variant: add an entry here, then add CSS/LaTeX styling in format-specific files
+local NOTE_VARIANT_CONFIG = {
+  idea           = { env = "notebox" },           -- uses default notebox; glyph injected inline
+  insight        = { env = "notebox" },           -- uses default notebox; asterism header
+  ["insight-major"] = { env = "notebox" },        -- uses default notebox; badge header
+  warning        = { env = "noteboxwarning" },
+  breadcrumb     = { env = "noteboxbreadcrumb" },
+  contrast       = { env = "noteboxcontrast" },
+  transition     = { env = "noteboxtransition" },
+  navigation     = { env = "noteboxnavigation" },
+  bridge         = { env = "noteboxbridge" },
+  usage          = { env = "noteboxusage" },
+  integration    = { env = "noteboxintegration" },
+  responsibility = { env = "noteboxresponsibility" },
+  reflexive      = { env = "noteboxreflexive" },
+  synthesis      = { env = "noteboxsynthesis" },
+  disclosure     = { env = "noteboxdisclosure" },
+  misuse         = { env = "noteboxmisuse" },
+  diagnostic     = { env = "noteboxdiagnostic" },
+  closing        = { env = "noteboxclosing" },
+  methodology    = { env = "noteboxmethodology" },
+  context        = { env = "noteboxcontext" },
+  scope          = { env = "noteboxscope" },
+  checklist      = { env = "noteboxchecklist" },
 }
+
+-- Derive NOTE_VARIANTS list from config keys for backwards compatibility
+local NOTE_VARIANTS = {}
+for variant, _ in pairs(NOTE_VARIANT_CONFIG) do
+  -- Skip compound variants like "insight-major" (handled specially)
+  if not variant:match("-") then
+    table.insert(NOTE_VARIANTS, variant)
+  end
+end
+
+-- Helper to get LaTeX environment for a variant
+local function note_variant_env(variant)
+  if not variant then
+    return "noteboxplain"
+  end
+  local config = NOTE_VARIANT_CONFIG[variant]
+  if config then
+    return config.env
+  end
+  return "notebox"  -- fallback for unrecognized variants
+end
 
 local function chapter_page_break_block(format_hint)
   format_hint = (format_hint or ""):lower()
@@ -1555,42 +1583,7 @@ local function handle_div(div)
   if has_epub_type(div.attributes, "note") then
     local variant = note_variant(div)
     inject_note_variant(div, variant)
-    local env
-    if variant == "warning" then
-      env = "noteboxwarning"
-    elseif variant == "breadcrumb" then
-      env = "noteboxbreadcrumb"
-    elseif variant == "navigation" then
-      env = "noteboxnavigation"
-    elseif variant == "bridge" then
-      env = "noteboxbridge"
-    elseif variant == "usage" then
-      env = "noteboxusage"
-    elseif variant == "integration" then
-      env = "noteboxintegration"
-    elseif variant == "responsibility" then
-      env = "noteboxresponsibility"
-    elseif variant == "reflexive" then
-      env = "noteboxreflexive"
-    elseif variant == "transition" then
-      env = "noteboxtransition"
-    elseif variant == "synthesis" then
-      env = "noteboxsynthesis"
-    elseif variant == "disclosure" then
-      env = "noteboxdisclosure"
-    elseif variant == "misuse" then
-      env = "noteboxmisuse"
-    elseif variant == "diagnostic" then
-      env = "noteboxdiagnostic"
-    elseif variant == "contrast" then
-      env = "noteboxcontrast"
-    elseif variant == "closing" then
-      env = "noteboxclosing"
-    elseif not variant then
-      env = "noteboxplain"
-    else
-      env = "notebox"
-    end
+    local env = note_variant_env(variant)
     return apply_pagebreak_wrappers(wrap_in_env(div, env), wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 

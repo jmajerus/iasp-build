@@ -88,7 +88,32 @@ def _extract_wrapper_tokens(wrapper_line: str) -> list[str]:
     if not body:
         return []
 
-    return body.split()
+    raw_tokens = body.split()
+    normalized: list[str] = []
+    for token in raw_tokens:
+        normalized.extend(_normalize_shorthand_token(token))
+    return normalized
+
+
+def _normalize_shorthand_token(token: str) -> list[str]:
+    """
+    Convert shorthand notation to proper class tokens.
+    
+    Examples:
+      'note.scope'  -> ['.note', '.scope']
+      'sidebar.warning' -> ['.sidebar', '.warning']
+      '.note'       -> ['.note']
+      '#my-id'      -> ['#my-id']
+      'data-x="y"'  -> ['data-x="y"']
+    """
+    # Already a proper class, id, or attribute token
+    if token.startswith('.') or token.startswith('#') or '=' in token:
+        return [token]
+    
+    # Shorthand like "note.scope" -> [".note", ".scope"]
+    # or single word "chapter" -> [".chapter"]
+    parts = token.split('.')
+    return ['.' + part for part in parts if part]
 
 
 def _extract_class_tokens(wrapper_line: str) -> list[str]:
@@ -118,6 +143,30 @@ for wrapper in DIR_TAGS.values():
 
 
 # -------- HELPERS ----------------------------------------------------------
+
+def _count_fence_markers(lines: list[str]) -> int:
+    """Count all fenced div markers (openers and closers) in lines.
+    
+    Returns the total count of ':::' lines - both standalone closers
+    and opening markers like '::: {.note}'. An even count indicates
+    properly balanced begin/end pairs.
+    """
+    count = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped == CLOSING:
+            count += 1
+        elif OPEN_RE.match(stripped):
+            count += 1
+    return count
+
+
+def _validate_fence_balance(path: Path, lines: list[str]) -> None:
+    """Warn if fenced div markers are not balanced (odd count)."""
+    count = _count_fence_markers(lines)
+    if count % 2 != 0:
+        print(f"!! WARNING: Unbalanced fences in {path} (count={count}, expected even)")
+
 
 def first_footnote_index(lines):
     """Return the index of the first footnote definition (e.g., [^1]: ...)."""
@@ -244,6 +293,10 @@ def wrap_file(path: Path, desired_open: str) -> None:
         tmp_path = Path(tmp.name)
 
     shutil.move(str(tmp_path), path)
+    
+    # Validate fence balance
+    _validate_fence_balance(path, lines)
+    
     if wrapper_status == "unchanged":
         print(f"-- Already correct: {path}")
     else:

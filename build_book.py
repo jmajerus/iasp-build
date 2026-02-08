@@ -989,7 +989,17 @@ def maybe_run_epubcheck(epub_path: Path) -> None:
 
     exe = shutil.which("epubcheck")
     if exe:
-        cmd = [exe, str(epub_path)]
+        # Resolve symlinks and check if it's actually a JAR file
+        resolved = Path(exe).resolve()
+        if resolved.suffix.lower() == ".jar":
+            # It's a JAR file (common on some distros) - need java -jar
+            java = shutil.which("java")
+            if java:
+                cmd = [java, "-jar", str(resolved), str(epub_path)]
+            else:
+                print("-- epubcheck found but is a JAR file and java not available.")
+        else:
+            cmd = [exe, str(epub_path)]
     else:
         jar_hint = os.environ.get("EPUBCHECK_JAR")
         if jar_hint:

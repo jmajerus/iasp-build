@@ -47,6 +47,10 @@ Pick whichever syntax feels natural. The brace form is the canonical one, while 
 - `.note.misuse` – red badge with ✕ whenever you’re flagging common misreadings or “don’t weaponize this” cautions.
 - `.note.diagnostic` – blue badge with 🔍 for pattern-recognition checklists and “diagnostic note” callouts.
 - `.note.closing` – muted ∎ badge reserved for “closing note” / endcap reflections.
+- `.note.methodology` – indigo ⊢ badge for methodological notes explaining *how* analysis is conducted.
+- `.note.context` – warm slate ◉ badge for contextual framing that sets the scene or establishes background.
+- `.note.scope` – warm copper ◎ badge for scope notes that delimit boundaries, applicability, or evidentiary thresholds.
+- `.note.checklist` – teal ☐ badge for indicative checklists, verification criteria, or structured evidence markers.
 
 **Full-page layout**: add `.layout-fullpage` to any top-level fenced block (bridge, table wrapper, jumbo callout, etc.) when it needs the entire spread. The Lua filter forces a break before *and* after the block in PDF/DOCX/RTF builds, so wide tables start at the top of a page and the following content resumes on a fresh page even if the table itself spills beyond one page. Tables can also auto-promote to full-page when they reach a configured row threshold (see `layout.table_fullpage_min_rows` in iasp-config.yaml). Auto-promoted tables receive a `.table-fullpage` class you can style.
 

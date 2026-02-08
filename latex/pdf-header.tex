@@ -33,9 +33,9 @@
 
 \providecommand{\BodyFontFamily}{TeX Gyre Pagella}
 \providecommand{\HeadingFontFamily}{TeX Gyre Pagella}
-\providecommand{\MonoFontFamily}{Inconsolata}
-\providecommand{\MonoFontFallbackA}{TeX Gyre Cursor}
-\providecommand{\MonoFontFallbackB}{DejaVu Sans Mono}
+\providecommand{\MonoFontFamily}{DejaVu Sans Mono}
+\providecommand{\MonoFontFallbackA}{Inconsolata}
+\providecommand{\MonoFontFallbackB}{TeX Gyre Cursor}
 \providecommand{\ScreenGeometryOptions}{margin=1.1in, twoside=false}
 \providecommand{\PrintGeometryOptions}{inner=0.5in, outer=0.5in, top=0.75in, bottom=0.75in, bindingoffset=0.375in, twoside=true}
 
@@ -189,8 +189,34 @@
 \newunicodechar{🌐}{\emojiFallback{"1F310}}
 \newunicodechar{📘}{\emojiFallback{"1F4D8}}
 \newunicodechar{⭐}{\emojiFallback{"2B50}}
+\newunicodechar{🗒}{\emojiFallback{"1F5D2}}   % spiral notepad
+\newunicodechar{📊}{\emojiFallback{"1F4CA}}   % bar chart
+\newunicodechar{🐣}{\emojiFallback{"1F423}}   % hatching chick
 \newunicodechar{☐}{{\checkboxfont\symbol{"2610}}}
 \newunicodechar{☑}{{\checkboxfont\symbol{"2611}}}
+
+% Note variant glyphs - fallback to noteglyphfont when encountered in prose
+\newunicodechar{💡}{\emojiFallback{"1F4A1}}   % idea
+\newunicodechar{🔍}{\emojiFallback{"1F50D}}   % diagnostic
+\newunicodechar{⇥}{{\noteglyphfont ⇥}}        % transition
+\newunicodechar{⚙}{{\noteglyphfont ⚙}}        % usage
+\newunicodechar{⚖}{{\noteglyphfont ⚖}}        % responsibility
+\newunicodechar{⟲}{{\noteglyphfont ⟲}}        % reflexive
+\newunicodechar{⇢}{{\noteglyphfont ⇢}}        % navigation
+\newunicodechar{✕}{{\noteglyphfont ✕}}        % misuse
+\newunicodechar{◉}{{\noteglyphfont ◉}}        % context
+\newunicodechar{◎}{{\noteglyphfont ◎}}        % scope
+\newunicodechar{⊢}{{\noteglyphfont ⊢}}        % methodology
+\newunicodechar{⊕}{{\noteglyphfont ⊕}}        % synthesis
+\newunicodechar{◊}{{\noteglyphfont ◊}}        % disclosure
+\newunicodechar{⇆}{{\noteglyphfont ⇆}}        % contrast
+\newunicodechar{∎}{{\noteglyphfont ∎}}        % closing
+\newunicodechar{⟷}{{\noteglyphfont ⟷}}        % bridge
+\newunicodechar{↗}{{\noteglyphfont ↗}}        % breadcrumb
+\newunicodechar{⁂}{{\noteglyphfont ⁂}}        % insight
+\newunicodechar{※}{{\noteglyphfont ※}}        % warning
+\newunicodechar{∴}{{\noteglyphfont ∴}}        % note (default)
+\newunicodechar{∞}{{\noteglyphfont ∞}}        % integration
 
 \newcommand{\sectionheadingglyph}[1]{%%
   \llap{{\noteglyphfont #1}\hspace{0.6em}}%%
@@ -591,6 +617,14 @@
 \definecolor{noteboxdisclosureline}{HTML}{A855F7}
 \definecolor{noteboxmisusebg}{HTML}{FFEDEA}
 \definecolor{noteboxmisuseline}{HTML}{B42318}
+\definecolor{noteboxmethodologybg}{HTML}{EEF0FF}
+\definecolor{noteboxmethodologyline}{HTML}{5046E5}
+\definecolor{noteboxcontextbg}{HTML}{F0F4F8}
+\definecolor{noteboxcontextline}{HTML}{4A5568}
+\definecolor{noteboxscopebg}{HTML}{FEF3E2}
+\definecolor{noteboxscopeline}{HTML}{92400E}
+\definecolor{noteboxchecklistbg}{HTML}{CCFBF1}
+\definecolor{noteboxchecklistline}{HTML}{0D9488}
 
 % --------------------------------------------------
 % Table appearance helpers
@@ -675,6 +709,14 @@
     noteboxdisclosureline,%%
     noteboxmisusebg,%%
     noteboxmisuseline,%%
+    noteboxmethodologybg,%%
+    noteboxmethodologyline,%%
+    noteboxcontextbg,%%
+    noteboxcontextline,%%
+    noteboxscopebg,%%
+    noteboxscopeline,%%
+    noteboxchecklistbg,%%
+    noteboxchecklistline,%%
     noteboxdiagnosticbg,%%
     noteboxdiagnosticline,%%
     noteboxclosingbg,%%
@@ -700,6 +742,10 @@
 \providecommand{\notebadgebgsynthesis}{noteboxsynthesisline!18!white}
 \providecommand{\notebadgebgdisclosure}{noteboxdisclosureline!18!white}
 \providecommand{\notebadgebgmisuse}{noteboxmisuseline!15!white}
+\providecommand{\notebadgebgmethodology}{noteboxmethodologyline!18!white}
+\providecommand{\notebadgebgcontext}{noteboxcontextline!18!white}
+\providecommand{\notebadgebgscope}{noteboxscopeline!18!white}
+\providecommand{\notebadgebgchecklist}{noteboxchecklistline!18!white}
 \providecommand{\notebadgebgdiagnostic}{noteboxdiagnosticline!18!white}
 \providecommand{\notebadgebgclosing}{noteboxclosingline!18!white}
 \providecommand{\sidebarbadgebg}{sidebarbg!70!white}

@@ -312,6 +312,34 @@ h3[epub|type~="subchapter"] {
   --note-marker-bg: rgba(71, 84, 103, 0.16);
 }
 
+[epub|type~="note"].methodology {
+  --note-border-color: #5046e5;
+  --note-background-color: #eef0ff;
+  --note-marker-color: #312e81;
+  --note-marker-bg: rgba(80, 70, 229, 0.16);
+}
+
+[epub|type~="note"].context {
+  --note-border-color: #4a5568;
+  --note-background-color: #f0f4f8;
+  --note-marker-color: #2d3748;
+  --note-marker-bg: rgba(74, 85, 104, 0.16);
+}
+
+[epub|type~="note"].scope {
+  --note-border-color: #92400e;
+  --note-background-color: #fef3e2;
+  --note-marker-color: #78350f;
+  --note-marker-bg: rgba(146, 64, 14, 0.16);
+}
+
+[epub|type~="note"].checklist {
+  --note-border-color: #0d9488;
+  --note-background-color: #ccfbf1;
+  --note-marker-color: #115e59;
+  --note-marker-bg: rgba(13, 148, 136, 0.16);
+}
+
 [epub|type~="note"].idea,
 [epub|type~="note"].insight {
   --note-border-color: #d9a300;
