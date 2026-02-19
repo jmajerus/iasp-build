@@ -75,6 +75,7 @@ Pick whichever syntax feels natural. The brace form is the canonical one, while 
 ## 4. Sanity Check Before Build
 
 - **Does every `:::` opener have a matching closer?** Missing closers are the #1 cause of mangled output.
+- **Using level 2+ headers in sidebars?** Level 1 headers (`#`) inside `.sidebar` or `.sidebar-block` divs cause PDF badge rendering issues. Use level 2 (`##`) or deeper. The build will warn about this during `tag_by_dir.py` validation.
 - **Running attributes line too long?** Break the brace form across lines:
   ```markdown
   ::: {

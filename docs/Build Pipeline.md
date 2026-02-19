@@ -141,6 +141,88 @@ Single-file essays under `articles/`:
 
 ---
 
+## Build-Time Validation
+
+The build pipeline includes automatic validation checks to catch common authoring issues:
+
+### tag_by_dir.py Validations
+
+When wrapping files with semantic divs, `tag_by_dir.py` runs two validations:
+
+1. **Fence Balance Check** — Warns if fenced div markers (`::: {.class}` and `:::`) are not balanced (odd count indicates missing opener or closer)
+   ```
+   !! WARNING: Unbalanced fences in path/to/file.md (count=3, expected even)
+   ```
+
+2. **Sidebar Header Level Check** — Warns if level 1 headers (`#`) are used inside sidebar blocks
+   ```
+   !! WARNING: Level 1 header on line 5 inside sidebar block (started line 1) in sidebars/Example.md
+      Sidebars should use level 2+ headers (##). Level 1 headers cause badge rendering issues.
+   ```
+   
+   **Why this matters**: In PDF output, level 1 headers map to `\section` commands which have special spacing/layout properties that interfere with the mdframed sidebar box environment, causing badge sections to render after the sidebar bottom edge instead of at the top.
+
+### EPUB Validation
+
+After building EPUB, `epubcheck` automatically validates the output:
+- Checks NCX/NAV structure
+- Validates XHTML/CSS syntax
+- Confirms EPUB 3.0 compliance
+
+Set `SKIP_EPUBCHECK=1` to disable.
+
+### PDF Optimization
+
+**Enabled by default.** PDFs are automatically linearized after generation to ensure compatibility with Adobe Document Cloud (used by Google Drive) and other online viewers.
+
+#### During Build (Default Behavior)
+
+All PDF builds are automatically optimized unless disabled:
+
+```bash
+# Normal builds (optimized by default)
+python3 build_book.py pdf
+python3 build_book.py article "articles/example.md"
+
+# Disable optimization (for debugging or speed)
+OPTIMIZE_PDF=0 python3 build_book.py pdf
+```
+
+When enabled (default), Ghostscript re-processes each generated PDF to:
+- Convert to PDF 1.4 (wider compatibility)
+- Apply `/prepress` optimization settings
+- **Linearize for Fast Web View** (required for Adobe Document Cloud)
+- Replace the original file with the optimized version
+
+#### After Build (Standalone Script)
+
+For optimizing existing PDFs without rebuilding:
+
+```bash
+# Single file (in-place)
+python3 iasp_tooling/scripts/optimize_pdf.py build/articles/example.pdf
+
+# Save to different file
+python3 iasp_tooling/scripts/optimize_pdf.py input.pdf output-optimized.pdf
+
+# Batch optimize all articles
+python3 iasp_tooling/scripts/optimize_pdf.py build/articles/*.pdf
+```
+
+**Note**: Requires Ghostscript (`gs`) to be installed. Silently skips if unavailable.
+
+**Why it's enabled by default**:
+- Required for Adobe Document Cloud (Google Drive PDF viewer)
+- Ensures PDFs work in all online viewers and browsers
+- Standard best practice for web-distributed PDFs
+
+**When to disable** (set `OPTIMIZE_PDF=0`):
+- Debugging LaTeX output (optimization may obscure formatting issues)
+- Build speed is critical (adds ~1-2 seconds per PDF)
+- You're only viewing PDFs locally and don't need web compatibility
+
+---
+
 ## Configuration Files
 
 | File | Purpose |

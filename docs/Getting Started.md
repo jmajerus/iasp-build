@@ -31,6 +31,22 @@ Install a TeX distribution with XeLaTeX:
 - **macOS**: MacTeX from <https://tug.org/mactex/>
 - **Windows**: MiKTeX or TeX Live
 
+### 4. Ghostscript (for PDF optimization)
+
+**Required for default PDF builds.** PDFs are automatically linearized for compatibility with Adobe Document Cloud (Google Drive).
+
+- **Linux**: `sudo apt install ghostscript`
+- **macOS**: `brew install ghostscript`
+- **Windows**: Download from <https://www.ghostscript.com/download/gsdnld.html>
+
+Verify installation:
+
+```bash
+gs --version
+```
+
+To skip optimization (e.g., for debugging): `OPTIMIZE_PDF=0 python3 build_book.py pdf`
+
 ---
 
 ## First Build

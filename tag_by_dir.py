@@ -72,6 +72,9 @@ CLOSING = ":::"
 # Regex to detect an opening fenced div with any attribute/class payload
 OPEN_RE = re.compile(r'^:::\s*(\{[^}]+\}|[.#A-Za-z0-9_-]+)\s*$')
 
+# Global warning collector
+VALIDATION_WARNINGS: list[str] = []
+
 
 def _extract_wrapper_tokens(wrapper_line: str) -> list[str]:
     stripped = wrapper_line.strip()
@@ -165,7 +168,42 @@ def _validate_fence_balance(path: Path, lines: list[str]) -> None:
     """Warn if fenced div markers are not balanced (odd count)."""
     count = _count_fence_markers(lines)
     if count % 2 != 0:
-        print(f"!! WARNING: Unbalanced fences in {path} (count={count}, expected even)")
+        warning = f"!! WARNING: Unbalanced fences in {path} (count={count}, expected even)"
+        print(warning)
+        VALIDATION_WARNINGS.append(warning)
+
+
+def _validate_sidebar_headers(path: Path, lines: list[str]) -> None:
+    """Warn if level 1 headers are found inside sidebar blocks.
+    
+    Level 1 headers (# Title) inside sidebar blocks cause LaTeX rendering
+    issues with badge placement. Sidebars should use level 2+ headers (##).
+    """
+    in_sidebar = False
+    sidebar_start_line = 0
+    
+    for i, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        
+        # Check for sidebar block opening
+        if stripped.startswith(':::') and '{' in stripped:
+            if '.aside' in stripped or '.sidebar' in stripped:
+                in_sidebar = True
+                sidebar_start_line = i
+        
+        # Check for closing
+        elif stripped == ':::':
+            if in_sidebar:
+                in_sidebar = False
+        
+        # Check for level 1 header inside sidebar
+        elif in_sidebar and stripped.startswith('# ') and not stripped.startswith('## '):
+            warning = (
+                f"!! WARNING: Level 1 header on line {i} inside sidebar block (started line {sidebar_start_line}) in {path}\n"
+                f"   Sidebars should use level 2+ headers (##). Level 1 headers cause badge rendering issues."
+            )
+            print(warning)
+            VALIDATION_WARNINGS.append(warning)
 
 
 def first_footnote_index(lines):
@@ -294,8 +332,9 @@ def wrap_file(path: Path, desired_open: str) -> None:
 
     shutil.move(str(tmp_path), path)
     
-    # Validate fence balance
+    # Validate fence balance and sidebar headers
     _validate_fence_balance(path, lines)
+    _validate_sidebar_headers(path, lines)
     
     if wrapper_status == "unchanged":
         print(f"-- Already correct: {path}")
@@ -320,6 +359,21 @@ def main() -> None:
         count += 1
 
     print(f"\nDone. Processed {count} file(s).")
+    
+    # Display validation warnings summary
+    if VALIDATION_WARNINGS:
+        print("\n" + "=" * 80)
+        print("VALIDATION WARNINGS SUMMARY")
+        print("=" * 80)
+        print(f"\n{len(VALIDATION_WARNINGS)} validation issue(s) found:\n")
+        for warning in VALIDATION_WARNINGS:
+            print(warning)
+            print()
+        print("=" * 80)
+        print("Please review and fix the issues above before building.")
+        print("=" * 80)
+    else:
+        print("\n✓ All files passed validation checks.")
 
 
 if __name__ == "__main__":

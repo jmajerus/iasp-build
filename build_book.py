@@ -23,6 +23,16 @@ Usage:
     python build_book.py articles   # build every single-source article (incremental)
 
     python build_book.py quote-playground  # tiny fixture for quote styling
+
+Environment Variables:
+    OPTIMIZE_PDF=0          Disable post-processing PDF optimization (enabled by
+                            default). Linearization is required for Adobe Document
+                            Cloud (Google Drive viewer). Only disable for debugging
+                            or when build speed is critical.
+    
+    BUILD_PROFILE=name      Select a named build profile from build-profiles.json
+    
+    SKIP_EPUBCHECK=1        Skip EPUB validation after building
 """
 
 import copy
@@ -466,6 +476,76 @@ def update_page_count_cache(pdf_path: Path, pdfmode: str | None) -> None:
         PDF_PAGE_COUNT_CACHE.write_text(json.dumps(cache, indent=2) + "\n", encoding="utf-8")
     except OSError:
         pass
+
+
+def optimize_pdf(pdf_path: Path) -> None:
+    """
+    Optimize a PDF for better compatibility using Ghostscript.
+    
+    Creates a linearized PDF 1.4 compatible version required for Adobe Document
+    Cloud (used by Google Drive) and other online PDF viewers. Enabled by default.
+    
+    Set OPTIMIZE_PDF=0 to disable (e.g., for debugging or faster builds).
+    
+    The optimized version replaces the original file.
+    """
+    optimize_enabled = _config_bool(os.environ.get("OPTIMIZE_PDF"), default=True)
+    
+    if not optimize_enabled:
+        return
+    
+    if not pdf_path.exists():
+        print(f"-- PDF not found at {pdf_path}; skipping optimization.")
+        return
+    
+    # Check if Ghostscript is available
+    try:
+        subprocess.run(
+            ["gs", "--version"],
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        print("!! Ghostscript (gs) not found or not working; skipping PDF optimization.")
+        print("   Install with: sudo apt install ghostscript")
+        return
+    
+    temp_path = pdf_path.with_suffix(".optimized.pdf")
+    
+    print(f"\n>> Optimizing PDF for compatibility: {pdf_path.name}")
+    
+    gs_cmd = [
+        "gs",
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.4",
+        "-dPDFSETTINGS=/prepress",
+        "-dFastWebView=true",  # Linearize for Adobe Document Cloud / web viewers
+        "-dNOPAUSE",
+        "-dQUIET",
+        "-dBATCH",
+        f"-sOutputFile={temp_path}",
+        str(pdf_path),
+    ]
+    
+    result = subprocess.run(gs_cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"!! PDF optimization failed with exit code {result.returncode}")
+        if result.stderr:
+            print(result.stderr)
+        if temp_path.exists():
+            temp_path.unlink()
+        return
+    
+    # Replace original with optimized version
+    try:
+        shutil.move(str(temp_path), str(pdf_path))
+        print(f"   ✓ PDF optimized successfully")
+    except OSError as exc:
+        print(f"!! Failed to replace PDF with optimized version: {exc}")
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def run_pre_build_hooks() -> None:
@@ -1837,6 +1917,7 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
 
     cmd += ["-o", str(out_path)]
     run(cmd)
+    optimize_pdf(out_path)
     update_page_count_cache(out_path, pdfmode or "screen")
 
 def build_pdf_debug(use_filter: bool = True, pdfmode: str | None = None) -> None:
@@ -1936,6 +2017,8 @@ def build_article_pdf(
         "--metadata=backmatter-enabled:false",
         "--metadata=title:",
         "--metadata=subtitle:",
+        # TEMP TEST: Removed --metadata=abstract: to test if this was the real problem
+        # "--metadata=abstract:",
     ]
     if not keep_bibliography:
         metadata_flags.append("--metadata=suppress-bibliography:true")
@@ -1960,6 +2043,7 @@ def build_article_pdf(
     append_semantic_filters(cmd, enabled=use_filter)
 
     run([*cmd, "-o", str(pdf_out)])
+    optimize_pdf(pdf_out)
 
 
 def build_all_articles(use_filter: bool = True) -> None:
@@ -2053,6 +2137,7 @@ def build_single_markdown(
     append_semantic_filters(base_cmd, enabled=use_filter)
 
     run([*base_cmd, "-o", str(pdf_out)])
+    optimize_pdf(pdf_out)
     run([*base_cmd, "-t", "latex", "-o", str(tex_out)])
 
 
