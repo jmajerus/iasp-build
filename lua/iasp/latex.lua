@@ -53,7 +53,8 @@ function M.create(opts)
 
             local env = is_inline and "sidebartight" or "sidebar"
             table.insert(out, pandoc.RawBlock("latex", "\\begin{" .. env .. "}"))
-            if not is_inline then
+            -- Skip badge if .nobadge class is present or for inline sidebars
+            if not is_inline and not opts.has_class(b, "nobadge") then
               table.insert(out, pandoc.RawBlock("latex", "\\sidebarbadge"))
             end
             for _, cb in ipairs(collected) do

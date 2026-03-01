@@ -35,6 +35,7 @@
 \newcommand{\glyphcontext}{{\noteglyphfont ◉}}   % note.context
 \newcommand{\glyphscope}{{\noteglyphfont ◎}}     % note.scope
 \newcommand{\glyphchecklist}{{\noteglyphfont ☐}}   % note.checklist
+\newcommand{\glyphprelude}{{\noteglyphfont \textcolor{noteboxpreludeline}{◆}}}   % note.prelude
 
 
 %--------------------------------------------------------------------
@@ -432,6 +433,11 @@
   \noteheaderbadgechecklist{\glyphchecklist}%
 }
 
+% note.prelude → subtle ornament (minimal decoration)
+\newcommand{\headernoteprelude}{%
+  \noteheaderornament{\glyphprelude}%
+}
+
 
 %--------------------------------------------------------------------
 % Backwards-compatible macros expected by iasp-semantics.lua
@@ -473,6 +479,7 @@
     {methodology}{\headernotemethodology}
     {context}   {\headernotecontext}
     {scope}     {\headernotescope}
+    {prelude}   {\headernoteprelude}
   }{\headernotenote}%
 }
 \ExplSyntaxOff
@@ -754,3 +761,16 @@
   innerleftmargin=0.95em,
   innerrightmargin=0.95em,
 ]{noteboxchecklist}
+
+\newmdenv[
+  skipabove=0.8\baselineskip,
+  skipbelow=0.8\baselineskip,
+  linewidth=0.8pt,
+  linecolor=noteboxpreludeline,
+  roundcorner=4pt,
+  backgroundcolor=noteboxpreludebg,
+  innertopmargin=0.7em,
+  innerbottommargin=0.7em,
+  innerleftmargin=0.95em,
+  innerrightmargin=0.95em,
+]{noteboxprelude}

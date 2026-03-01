@@ -778,7 +778,7 @@ local function render_markdown(markdown)
   if not markdown or markdown == "" then
     return {}
   end
-  local doc = pandoc.read(markdown, "markdown")
+  local doc = pandoc.read(markdown, "markdown+citations")
   return doc.blocks
 end
 

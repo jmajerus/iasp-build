@@ -188,10 +188,10 @@ python3 build_book.py article "articles/example.md"
 OPTIMIZE_PDF=0 python3 build_book.py pdf
 ```
 
-When enabled (default), Ghostscript re-processes each generated PDF to:
-- Convert to PDF 1.4 (wider compatibility)
-- Apply `/prepress` optimization settings
+When enabled (default), qpdf re-processes each generated PDF to:
 - **Linearize for Fast Web View** (required for Adobe Document Cloud)
+- Enable object stream compression
+- Preserve all PDF metadata (title, author, keywords, etc.)
 - Replace the original file with the optimized version
 
 #### After Build (Standalone Script)
@@ -209,7 +209,7 @@ python3 iasp_tooling/scripts/optimize_pdf.py input.pdf output-optimized.pdf
 python3 iasp_tooling/scripts/optimize_pdf.py build/articles/*.pdf
 ```
 
-**Note**: Requires Ghostscript (`gs`) to be installed. Silently skips if unavailable.
+**Note**: Requires qpdf to be installed. Silently skips if unavailable.
 
 **Why it's enabled by default**:
 - Required for Adobe Document Cloud (Google Drive PDF viewer)

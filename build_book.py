@@ -480,10 +480,12 @@ def update_page_count_cache(pdf_path: Path, pdfmode: str | None) -> None:
 
 def optimize_pdf(pdf_path: Path) -> None:
     """
-    Optimize a PDF for better compatibility using Ghostscript.
+    Optimize a PDF for better compatibility using qpdf.
     
-    Creates a linearized PDF 1.4 compatible version required for Adobe Document
+    Creates a linearized PDF compatible version required for Adobe Document
     Cloud (used by Google Drive) and other online PDF viewers. Enabled by default.
+    
+    Uses qpdf which preserves PDF metadata unlike Ghostscript.
     
     Set OPTIMIZE_PDF=0 to disable (e.g., for debugging or faster builds).
     
@@ -498,37 +500,33 @@ def optimize_pdf(pdf_path: Path) -> None:
         print(f"-- PDF not found at {pdf_path}; skipping optimization.")
         return
     
-    # Check if Ghostscript is available
+    # Check if qpdf is available
     try:
         subprocess.run(
-            ["gs", "--version"],
+            ["qpdf", "--version"],
             capture_output=True,
             check=True,
             timeout=5,
         )
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        print("!! Ghostscript (gs) not found or not working; skipping PDF optimization.")
-        print("   Install with: sudo apt install ghostscript")
+        print("!! qpdf not found or not working; skipping PDF optimization.")
+        print("   Install with: sudo apt install qpdf")
         return
     
     temp_path = pdf_path.with_suffix(".optimized.pdf")
     
     print(f"\n>> Optimizing PDF for compatibility: {pdf_path.name}")
     
-    gs_cmd = [
-        "gs",
-        "-sDEVICE=pdfwrite",
-        "-dCompatibilityLevel=1.4",
-        "-dPDFSETTINGS=/prepress",
-        "-dFastWebView=true",  # Linearize for Adobe Document Cloud / web viewers
-        "-dNOPAUSE",
-        "-dQUIET",
-        "-dBATCH",
-        f"-sOutputFile={temp_path}",
+    qpdf_cmd = [
+        "qpdf",
+        "--linearize",  # Create linearized (web-optimized) PDF
+        "--compress-streams=y",
+        "--object-streams=generate",
         str(pdf_path),
+        str(temp_path),
     ]
     
-    result = subprocess.run(gs_cmd, capture_output=True, text=True)
+    result = subprocess.run(qpdf_cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
         print(f"!! PDF optimization failed with exit code {result.returncode}")
@@ -2011,14 +2009,22 @@ def build_article_pdf(
 
     append_metadata_files(cmd)
     article_title = resolved.stem.strip()
+    
+    # Preserve PDF metadata from metadata.yaml while suppressing visual rendering:
+    # - title-meta, author-meta, subject, keywords go into PDF properties
+    # - title, subtitle, author, date, abstract are cleared to suppress visual rendering
     metadata_flags = [
         "--metadata=article-build:true",
         "--metadata=frontmatter-enabled:false",
         "--metadata=backmatter-enabled:false",
-        "--metadata=title:",
-        "--metadata=subtitle:",
-        # TEMP TEST: Removed --metadata=abstract: to test if this was the real problem
-        # "--metadata=abstract:",
+        # PDF metadata is already loaded from metadata files and will be preserved
+        # via title-meta, author-meta, subject, keywords (Pandoc handles this automatically)
+        # Clear visual rendering fields:
+        "--metadata=title:",           # Clear visual title
+        "--metadata=subtitle:",        # Clear visual subtitle
+        "--metadata=author:",          # Clear visual author list
+        "--metadata=date:",            # Clear visual date
+        "--metadata=abstract:",        # Clear visual abstract block
     ]
     if not keep_bibliography:
         metadata_flags.append("--metadata=suppress-bibliography:true")
@@ -2029,7 +2035,6 @@ def build_article_pdf(
         metadata_flags.append(f'--metadata=pdftitle:"{safe_title}"')
     cmd += metadata_flags
     cmd += ["--variable=titlepage:false", "--variable=book:false"]
-    enable_citations(cmd)
 
     if pdfmode:
         cmd += [f"--variable=pdfmode:{pdfmode}"]
@@ -2041,6 +2046,9 @@ def build_article_pdf(
     append_catalog_collections_filter(cmd)
 
     append_semantic_filters(cmd, enabled=use_filter)
+    
+    # Add --citeproc AFTER Lua filters so included citations are processed
+    enable_citations(cmd)
 
     run([*cmd, "-o", str(pdf_out)])
     optimize_pdf(pdf_out)
@@ -2123,7 +2131,6 @@ def build_single_markdown(
     ]
 
     append_metadata_files(base_cmd)
-    enable_citations(base_cmd)
 
     if pdfmode:
         base_cmd += [f"--variable=pdfmode:{pdfmode}"]
@@ -2135,6 +2142,9 @@ def build_single_markdown(
     append_catalog_collections_filter(base_cmd)
 
     append_semantic_filters(base_cmd, enabled=use_filter)
+    
+    # Add --citeproc AFTER Lua filters so included citations are processed
+    enable_citations(base_cmd)
 
     run([*base_cmd, "-o", str(pdf_out)])
     optimize_pdf(pdf_out)

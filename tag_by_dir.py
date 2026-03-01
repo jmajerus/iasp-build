@@ -36,6 +36,7 @@ DIR_TAGS = {
     "bridges": '::: {.bridge}',
     "bridgeheads": '::: {.bridge}',
     "appendices": '::: {.appendix}',
+    "articles": '::: {.article}',
     "chapters": '::: {.chapter}',
     "subchapters": '::: {.subchapter}',
     "sections": '::: {.section}',
@@ -255,6 +256,7 @@ def wrap_file(path: Path, desired_open: str) -> None:
     desired_nonclass = [token for token in desired_tokens if not token.startswith('.')]
     desired_class_set = set(desired_classes)
     wrapper_status = "unchanged"
+    wrapped_include = False  # Track if we wrapped an include directive
 
     # File is empty / whitespace only
     if first is None:
@@ -273,8 +275,19 @@ def wrap_file(path: Path, desired_open: str) -> None:
         existing_nonclass = [token for token in existing_tokens if not token.startswith('.')]
         existing_class_set = set(existing_classes)
         has_all_desired = bool(desired_classes) and desired_class_set.issubset(existing_class_set)
-
-        if existing_first == desired_open_stripped or has_all_desired:
+        
+        # Check if this is an .include directive - these should be wrapped, not merged
+        is_include = '.include' in existing_classes
+        
+        if is_include:
+            # This is an include directive - we need to wrap it, not merge with it
+            # Insert the semantic wrapper before the include
+            lines.insert(first, desired_open_stripped + "\n")
+            if lines[first + 1].strip() != "":
+                lines.insert(first + 1, "\n")
+            wrapper_status = "updated"
+            wrapped_include = True  # Track that we wrapped an include
+        elif existing_first == desired_open_stripped or has_all_desired:
             # Already correct or already contains the desired semantic classes.
             pass
         else:
@@ -319,10 +332,30 @@ def wrap_file(path: Path, desired_open: str) -> None:
 
         if last is None:
             lines.append(CLOSING + "\n")
+        elif wrapped_include:
+            # We wrapped an include directive, so we need to add a closing fence
+            # even if the last line is already a closing (that's for the include)
+            if not lines[-1].endswith("\n"):
+                lines[-1] += "\n"
+            lines.append("\n")
+            lines.append(CLOSING + "\n")
         elif lines[last].strip() != closing_stripped:
             if not lines[-1].endswith("\n"):
                 lines[-1] += "\n"
             lines.append(CLOSING + "\n")
+    
+    # Final check: ensure fences are balanced (even count)
+    # If odd, we're missing a closing fence
+    fence_count = _count_fence_markers(lines)
+    if fence_count % 2 != 0:
+        # Add missing closing fence
+        if not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        if lines[-1].strip() != "":
+            lines.append("\n")
+        lines.append(CLOSING + "\n")
+        if wrapper_status == "unchanged":
+            wrapper_status = "updated"  # We're fixing unbalanced fences
 
     # Safe write
     new_text = "".join(lines)

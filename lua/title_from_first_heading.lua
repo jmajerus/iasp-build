@@ -81,6 +81,11 @@ end
 return {
   {
     Pandoc = function(doc)
+      -- Skip title injection for article builds (articles manage their own titles)
+      if doc.meta and doc.meta["article-build"] then
+        return doc
+      end
+
       if meta_has_title(doc.meta) then
         return doc
       end

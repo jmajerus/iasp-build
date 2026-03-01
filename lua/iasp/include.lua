@@ -481,7 +481,7 @@ function M.create(opts)
         include_stack[include_path] = true
         local ok, included = pcall(function()
           local normalized = normalize_heading_indentation(contents)
-          return pandoc.read(normalized, "markdown+fancy_lists+fenced_divs+header_attributes+link_attributes+smart")
+          return pandoc.read(normalized, "markdown+citations+fancy_lists+fenced_divs+header_attributes+link_attributes+smart")
         end)
         include_stack[include_path] = nil
 
@@ -500,6 +500,47 @@ function M.create(opts)
           if prefix then
             included.blocks = namespace_header_identifiers(included.blocks, prefix, 3)
           end
+        end
+        -- Transfer .nobadge and .noglyph classes from include div to included content
+        local classes_to_transfer = {}
+        if opts.has_class(div, "nobadge") then
+          table.insert(classes_to_transfer, "nobadge")
+        end
+        if opts.has_class(div, "noglyph") then
+          table.insert(classes_to_transfer, "noglyph")
+        end
+        
+        if #classes_to_transfer > 0 then
+          local function add_class_if_missing(classes, class_name)
+            for _, cls in ipairs(classes) do
+              if cls == class_name then
+                return
+              end
+            end
+            table.insert(classes, class_name)
+          end
+          
+          local function transfer_classes_to_content(blocks)
+            for _, b in ipairs(blocks) do
+              if b.t == "Header" and b.classes then
+                for _, class_name in ipairs(classes_to_transfer) do
+                  add_class_if_missing(b.classes, class_name)
+                end
+              elseif b.t == "Div" then
+                -- Add to sidebar Divs (so semantic filters can see it)
+                if b.classes and opts.has_class(b, "sidebar") then
+                  for _, class_name in ipairs(classes_to_transfer) do
+                    add_class_if_missing(b.classes, class_name)
+                  end
+                end
+                -- Recurse into nested content
+                if b.content then
+                  transfer_classes_to_content(b.content)
+                end
+              end
+            end
+          end
+          transfer_classes_to_content(included.blocks)
         end
         for _, b in ipairs(included.blocks) do
           table.insert(assembled, b)

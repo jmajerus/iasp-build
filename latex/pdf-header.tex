@@ -576,12 +576,12 @@
 % Sidebar background differs by mode; make it clearly visible.
 \ifthenelse{\boolean{isscreen}}{%%
   % Screen PDF: slightly darker gray for clear on-screen contrast
-  \colorlet{sidebarbg}{gray!20}%%
+  \colorlet{sidebarbg}{gray!10}%%
   \colorlet{calloutbg}{gray!12}%%
   \colorlet{includebannerbg}{gray!25}%%
 }{%%
   % Print PDF: a bit lighter, but still clearly distinct
-  \colorlet{sidebarbg}{gray!12}%%
+  \colorlet{sidebarbg}{gray!5}%%
   \colorlet{calloutbg}{gray!6}%%
   \colorlet{includebannerbg}{gray!18}%%
 }
@@ -625,6 +625,8 @@
 \definecolor{noteboxscopeline}{HTML}{92400E}
 \definecolor{noteboxchecklistbg}{HTML}{CCFBF1}
 \definecolor{noteboxchecklistline}{HTML}{0D9488}
+\definecolor{noteboxpreludebg}{HTML}{F9FAFB}
+\definecolor{noteboxpreludeline}{HTML}{9CA3AF}
 
 % --------------------------------------------------
 % Table appearance helpers

@@ -5,8 +5,8 @@ optimize_pdf.py
 Standalone script to optimize PDF files for better compatibility with
 Google Drive and online PDF viewers.
 
-Uses Ghostscript to convert PDFs to linearized PDF 1.4 format with 
-prepress optimization and Fast Web View enabled for Adobe Document Cloud.
+Uses qpdf to linearize PDFs for Adobe Document Cloud while preserving
+all PDF metadata (title, author, keywords, etc.).
 
 Usage:
     python3 optimize_pdf.py <input.pdf>
@@ -30,11 +30,11 @@ import sys
 from pathlib import Path
 
 
-def check_ghostscript() -> bool:
-    """Check if Ghostscript is available."""
+def check_qpdf() -> bool:
+    """Check if qpdf is available."""
     try:
         subprocess.run(
-            ["gs", "--version"],
+            ["qpdf", "--version"],
             capture_output=True,
             check=True,
             timeout=5,
@@ -46,7 +46,7 @@ def check_ghostscript() -> bool:
 
 def optimize_pdf(input_path: Path, output_path: Path | None = None) -> bool:
     """
-    Optimize a PDF file using Ghostscript.
+    Optimize a PDF file using qpdf.
     
     Args:
         input_path: Path to input PDF
@@ -73,20 +73,18 @@ def optimize_pdf(input_path: Path, output_path: Path | None = None) -> bool:
     
     print(f"Optimizing: {input_path.name}")
     
-    gs_cmd = [
-        "gs",
-        "-sDEVICE=pdfwrite",
-        "-dCompatibilityLevel=1.4",
-        "-dPDFSETTINGS=/prepress",
-        "-dFastWebView=true",  # Linearize for Adobe Document Cloud / web viewers
-        "-dNOPAUSE",
-        "-dQUIET",
-        "-dBATCH",
-        f"-sOutputFile={temp_path}",
+    qpdf_cmd = [
+        "qpdf",
+        "--linearize",  # Create linearized (web-optimized) PDF
+        "--compress-streams=y",
+        "--object-streams=generate",
         str(input_path),
+        str(temp_path),
+    ]
+        str(temp_path),
     ]
     
-    result = subprocess.run(gs_cmd, capture_output=True, text=True)
+    result = subprocess.run(qpdf_cmd, capture_output=True, text=True)
     
     if result.returncode != 0:
         print(f"!! Optimization failed with exit code {result.returncode}")
@@ -117,9 +115,9 @@ def main() -> None:
         print("       python3 optimize_pdf.py build/articles/*.pdf")
         sys.exit(1)
     
-    if not check_ghostscript():
-        print("!! Ghostscript (gs) not found or not working.")
-        print("   Install with: sudo apt install ghostscript")
+    if not check_qpdf():
+        print("!! qpdf not found or not working.")
+        print("   Install with: sudo apt install qpdf")
         sys.exit(1)
     
     inputs = [Path(arg) for arg in sys.argv[1:]]

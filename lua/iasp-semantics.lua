@@ -345,6 +345,13 @@ local BADGE_DISABLE_CLASS_HINTS = {
   ["badge-off"] = true,
   nobadges = true
 }
+local GLYPH_DISABLE_CLASS_HINTS = {
+  noglyph = true,
+  ["no-glyph"] = true,
+  glyphoff = true,
+  ["glyph-off"] = true,
+  noglyphs = true
+}
 local LOCAL_GLYPH_CLASS_HINTS = {
   ["sidebar-glyph"] = true,
   glyph = true,
@@ -515,6 +522,18 @@ local function has_badge_disable_hint(div)
   return false
 end
 
+local function has_glyph_disable_hint(div)
+  if not div or not div.classes then
+    return false
+  end
+  for _, cls in ipairs(div.classes) do
+    if GLYPH_DISABLE_CLASS_HINTS[cls] then
+      return true
+    end
+  end
+  return false
+end
+
 local function div_has_named_block_semantics(div)
   if not div or not div.attributes then
     return false
@@ -524,7 +543,6 @@ local function div_has_named_block_semantics(div)
     return false
   end
   for token in types:gmatch("%S+") do
-    local lowered = token:lower()
     if lowered == "note" then
       if named_note_badges_enabled() and (not note_variant or not note_variant(div)) then
         return true
@@ -851,10 +869,20 @@ local function sidebar_display_mode(div, is_sidebar_block)
     local attr = div.attributes["data-marker"]
     if attr and attr ~= "" then
       local normalized = attr:lower()
-      if normalized == "badge" or normalized == "glyph" then
+      if normalized == "badge" or normalized == "glyph" or normalized == "none" then
         forced = normalized
       end
     end
+  end
+
+  -- Check for glyph disable hints (noglyph, no-glyph, etc.) - takes precedence
+  if not forced and has_glyph_disable_hint(div) then
+    forced = "none"
+  end
+
+  -- Check for badge disable hints (nobadge, no-badge, etc.)
+  if not forced and has_badge_disable_hint(div) then
+    forced = "glyph"
   end
 
   if not forced then
@@ -1210,6 +1238,7 @@ local NOTE_VARIANT_CONFIG = {
   context        = { env = "noteboxcontext" },
   scope          = { env = "noteboxscope" },
   checklist      = { env = "noteboxchecklist" },
+  prelude        = { env = "noteboxprelude" },
 }
 
 -- Derive NOTE_VARIANTS list from config keys for backwards compatibility
@@ -1487,7 +1516,7 @@ local function handle_div(div)
   if handles_sidebar_content then
     local display_mode = sidebar_display_mode(div, is_sidebar_block)
     local wants_badge = display_mode == "badge"
-    local wants_glyph = display_mode ~= "badge"
+    local wants_glyph = display_mode == "glyph"
 
     if wants_glyph then
       if decorate_sidebar_heading(div.content) then

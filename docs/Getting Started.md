@@ -31,18 +31,18 @@ Install a TeX distribution with XeLaTeX:
 - **macOS**: MacTeX from <https://tug.org/mactex/>
 - **Windows**: MiKTeX or TeX Live
 
-### 4. Ghostscript (for PDF optimization)
+### 4. qpdf (for PDF optimization)
 
 **Required for default PDF builds.** PDFs are automatically linearized for compatibility with Adobe Document Cloud (Google Drive).
 
-- **Linux**: `sudo apt install ghostscript`
-- **macOS**: `brew install ghostscript`
-- **Windows**: Download from <https://www.ghostscript.com/download/gsdnld.html>
+- **Linux**: `sudo apt install qpdf`
+- **macOS**: `brew install qpdf`
+- **Windows**: Download from <https://github.com/qpdf/qpdf/releases>
 
 Verify installation:
 
 ```bash
-gs --version
+qpdf --version
 ```
 
 To skip optimization (e.g., for debugging): `OPTIMIZE_PDF=0 python3 build_book.py pdf`
