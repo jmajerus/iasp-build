@@ -1879,13 +1879,40 @@ def make_pdf_base_cmd(
     if pdfmode == "print":
         # KDP print: 6.69×9.61" trim size with dynamically calculated margins
         
-        # Estimate page count from previous build to determine gutter requirements
+        # Get previous build info to predict optimal gutter
         prev_page_count = estimate_page_count_from_previous_build(PDF_OUT_PRINT)
         
         if prev_page_count:
-            # Use previous build's page count to determine margins
-            gutter = get_kdp_gutter_margin(prev_page_count)
-            print(f"→ Using KDP margins based on {prev_page_count} pages: {gutter}\" gutter")
+            # Use predictive heuristic to find stable gutter margin
+            # Start with the gutter that was used in previous build
+            old_gutter = get_kdp_gutter_margin(prev_page_count)
+            
+            # Predict what page count we'd get with each possible gutter tier
+            # and collect all stable configurations
+            gutter_candidates = [0.375, 0.5, 0.625, 0.75, 0.875]
+            stable_options = []
+            
+            for candidate_gutter in gutter_candidates:
+                predicted_count = predict_page_count_from_margin_change(
+                    old_page_count=prev_page_count,
+                    old_gutter=old_gutter,
+                    new_gutter=candidate_gutter,
+                )
+                required_gutter = get_kdp_gutter_margin(predicted_count)
+                
+                # Found a stable configuration: predicted count matches gutter tier
+                if required_gutter == candidate_gutter:
+                    stable_options.append((candidate_gutter, predicted_count))
+            
+            if stable_options:
+                # Choose the most conservative option (largest gutter) for headroom
+                # under the 828-page limit
+                gutter, predicted_pages = stable_options[-1]
+                print(f"→ Predicted {predicted_pages} pages with {gutter}\" gutter (based on {prev_page_count}-page previous build)")
+            else:
+                # No stable solution found (shouldn't happen), use conservative
+                gutter = 0.875
+                print(f"→ Using conservative KDP margins: {gutter}\" gutter")
         else:
             # No previous build: use conservative margins for thick books
             gutter = 0.875
@@ -1960,6 +1987,50 @@ def get_kdp_gutter_margin(page_count: int) -> float:
         return 0.75
     else:
         return 0.875
+
+
+def predict_page_count_from_margin_change(
+    old_page_count: int,
+    old_gutter: float,
+    new_gutter: float,
+    trim_width: float = 6.69,
+    trim_height: float = 9.61,
+    outside: float = 0.75,
+    top: float = 0.75,
+    bottom: float = 0.875,
+) -> int:
+    """Predict page count from margin changes using text area ratio.
+    
+    Page count scales inversely with text area: if you reduce the text area
+    by 10%, you need 10% more pages to fit the same content.
+    
+    Args:
+        old_page_count: Page count from previous build
+        old_gutter: Gutter margin used in previous build
+        new_gutter: Proposed new gutter margin
+        trim_width: Paper width in inches
+        trim_height: Paper height in inches
+        outside: Outside margin in inches
+        top: Top margin in inches
+        bottom: Bottom margin in inches
+        
+    Returns:
+        Predicted page count with new margins
+    """
+    # Calculate old text area
+    old_text_width = trim_width - old_gutter - outside
+    old_text_height = trim_height - top - bottom
+    old_text_area = old_text_width * old_text_height
+    
+    # Calculate new text area
+    new_text_width = trim_width - new_gutter - outside
+    new_text_height = trim_height - top - bottom
+    new_text_area = new_text_width * new_text_height
+    
+    # Page count scales inversely with text area
+    predicted_pages = int(old_page_count * (old_text_area / new_text_area) + 0.5)
+    
+    return predicted_pages
 
 
 def estimate_page_count_from_previous_build(output_path: Path) -> int | None:
