@@ -9,6 +9,13 @@
 }
 \makeatother
 
+% Hyphenation and line-breaking controls
+% Reduce excessive hyphenation for better readability
+\hyphenpenalty=500       % Default is 50 (lower = more hyphenation)
+\exhyphenpenalty=500     % Penalty for breaking already-hyphenated words
+\tolerance=1000          % Default is 200 (higher = more tolerance for loose spacing)
+\emergencystretch=3em    % Allow extra stretch to avoid overfull boxes
+
 \usepackage{needspace}
 \usepackage{fontspec}
 \usepackage{newunicodechar}
@@ -36,8 +43,8 @@
 \providecommand{\MonoFontFamily}{DejaVu Sans Mono}
 \providecommand{\MonoFontFallbackA}{Inconsolata}
 \providecommand{\MonoFontFallbackB}{TeX Gyre Cursor}
-\providecommand{\ScreenGeometryOptions}{margin=1.1in, twoside=false}
-\providecommand{\PrintGeometryOptions}{inner=0.5in, outer=0.5in, top=0.75in, bottom=0.75in, bindingoffset=0.375in, twoside=true}
+\providecommand{\ScreenGeometryOptions}{paperwidth=6in, paperheight=9in, margin=1.1in, twoside=false}
+\providecommand{\PrintGeometryOptions}{paperwidth=6in, paperheight=9in, left=0.75in, right=0.375in, top=0.5in, bottom=0.5in, twoside=false}
 
 % Provide fallback Highlighting/Shaded environments if Pandoc's template omits them
 \makeatletter
@@ -262,17 +269,34 @@
   }{}
 }
 
+% --------------------------------------------------
+% Font size reduction for KDP print builds
+% --------------------------------------------------
+% Apply 9pt font in print mode to reduce pagination for KDP's 828-page limit
+% Use \AtBeginDocument to ensure it's applied after all packages have loaded
+\ifthenelse{\boolean{isprint}}{%%
+  \AtBeginDocument{%%
+    \renewcommand{\normalsize}{\fontsize{9pt}{11pt}\selectfont}%%
+    \renewcommand{\small}{\fontsize{8pt}{9.5pt}\selectfont}%%
+    \renewcommand{\footnotesize}{\fontsize{7.5pt}{9pt}\selectfont}%%
+    \renewcommand{\large}{\fontsize{10.5pt}{12.5pt}\selectfont}%%
+    \renewcommand{\Large}{\fontsize{12pt}{14pt}\selectfont}%%
+    \renewcommand{\LARGE}{\fontsize{14pt}{17pt}\selectfont}%%
+    \renewcommand{\huge}{\fontsize{17pt}{20pt}\selectfont}%%
+    \renewcommand{\Huge}{\fontsize{20pt}{24pt}\selectfont}%%
+    \normalsize  %% Apply immediately
+  }%%
+}{}
+
+
 
 % --------------------------------------------------
 % Page layout
 % --------------------------------------------------
-\ifthenelse{\boolean{isprint}}{%%
-  % Print-optimized: asymmetric margins for binding + mirrored layout
-  \usepackage[\PrintGeometryOptions]{geometry}%%
-}{%%
-  % Screen-optimized: a bit more generous margins, single-sided
-  \usepackage[\ScreenGeometryOptions]{geometry}%%
-}
+% Note: geometry package is loaded by Pandoc's template with options
+% passed via --variable=geometry: in build_book.py
+% The \PrintGeometryOptions and \ScreenGeometryOptions are kept for reference
+% but no longer used directly
 \usepackage{microtype} % nicer text spacing
 
 % --------------------------------------------------
@@ -351,8 +375,8 @@
 \ifthenelse{\boolean{isprint}}{%%
   \pagestyle{fancy}
   \fancyhf{}% clear
-  % Page number at bottom center
-  \fancyfoot[C]{\thepage}
+  % Page number at bottom center (use small font for print)
+  \fancyfoot[C]{\small\thepage}
   % Running heads: small italic for visual separation (if enabled)
   % LE = Left side on Even pages, RO = Right side on Odd pages
   \fancyhead[LE,RO]{\iaspRunningHeadText}
@@ -368,7 +392,7 @@
 
 \fancypagestyle{plain}{%% ensure chapter-opening pages follow the same rules
   \fancyhf{}
-  \fancyfoot[C]{\thepage}
+  \fancyfoot[C]{\ifthenelse{\boolean{isprint}}{\small\thepage}{\thepage}}
   \fancyhead[LE,RO]{\iaspRunningHeadText}
   \ifthenelse{\boolean{isprint}}{%%
     \renewcommand{\headrulewidth}{0.4pt}%%

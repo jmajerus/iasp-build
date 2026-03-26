@@ -1866,6 +1866,43 @@ def make_pdf_base_cmd(
     # Allow overriding pdfmode from the CLI (e.g., pdf-screen/pdf-print)
     if pdfmode:
         cmd += [f"--variable=pdfmode:{pdfmode}"]
+        
+        # Create a temp LaTeX file that defines \pdfmode for use in pdf-header.tex
+        # Pandoc's --variable doesn't create LaTeX commands, so we do it manually
+        pdfmode_tex = BUILD_DIR / "pdfmode-def.tex"
+        pdfmode_tex.write_text(f"\\newcommand{{\\pdfmode}}{{{pdfmode}}}\n")
+        cmd += ["--include-in-header", str(pdfmode_tex)]
+
+    # Set paper size and margins
+    # Note: These must be passed as Pandoc variables since geometry package
+    # is loaded by Pandoc's template before our header is included
+    if pdfmode == "print":
+        # KDP print: 6.69×9.61" trim size with dynamically calculated margins
+        
+        # Estimate page count from previous build to determine gutter requirements
+        prev_page_count = estimate_page_count_from_previous_build(PDF_OUT_PRINT)
+        
+        if prev_page_count:
+            # Use previous build's page count to determine margins
+            gutter = get_kdp_gutter_margin(prev_page_count)
+            print(f"→ Using KDP margins based on {prev_page_count} pages: {gutter}\" gutter")
+        else:
+            # No previous build: use conservative margins for thick books
+            gutter = 0.875
+            print(f"→ No previous build found, using conservative KDP margins: {gutter}\" gutter")
+        
+        # KDP minimums: outside 0.375", top/bottom 0.375"
+        # We use slightly generous margins to ensure comfortable reading
+        geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right=0.5in,top=0.625in,bottom=0.625in,twoside=false"
+        cmd += [f"--variable=geometry:{geometry_opts}"]
+    elif pdfmode == "screen":
+        # Screen: explicit 6×9" configuration with comfortable margins
+        geometry_opts = "paperwidth=6in,paperheight=9in,margin=1.1in,twoside=false"
+        cmd += [f"--variable=geometry:{geometry_opts}"]
+    else:
+        # Default: letter size with 1.1-inch margins (historical standard)
+        geometry_opts = "margin=1.1in,twoside=false"
+        cmd += [f"--variable=geometry:{geometry_opts}"]
 
     cmd += [
         "--top-level-division=chapter",
@@ -1895,6 +1932,63 @@ def make_pdf_base_cmd(
 
     return cmd
 
+
+def get_kdp_gutter_margin(page_count: int) -> float:
+    """Calculate KDP-required gutter (inside) margin based on page count.
+    
+    KDP perfect binding requirements:
+    - 24-150 pages: 0.375" minimum
+    - 151-300 pages: 0.5" minimum
+    - 301-500 pages: 0.625" minimum
+    - 501-700 pages: 0.75" minimum
+    - 701-828 pages: 0.875" minimum
+    
+    Args:
+        page_count: Number of pages in the book
+        
+    Returns:
+        Minimum gutter margin in inches
+    """
+    if page_count <= 150:
+        return 0.375
+    elif page_count <= 300:
+        return 0.5
+    elif page_count <= 500:
+        return 0.625
+    elif page_count <= 700:
+        return 0.75
+    else:
+        return 0.875
+
+
+def estimate_page_count_from_previous_build(output_path: Path) -> int | None:
+    """Get page count from previous PDF build if available.
+    
+    Args:
+        output_path: Path to PDF file
+        
+    Returns:
+        Page count or None if file doesn't exist or pdfinfo fails
+    """
+    if not output_path.exists():
+        return None
+    
+    try:
+        result = subprocess.run(
+            ["pdfinfo", str(output_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("Pages:"):
+                return int(line.split(":")[1].strip())
+    except (subprocess.CalledProcessError, ValueError, FileNotFoundError):
+        pass
+    
+    return None
+
+
 def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build the final PDF via XeLaTeX.
 
@@ -1905,6 +1999,12 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
 
     ensure_build_dir()
     stage_cover_image()
+    
+    # For KDP print builds, get the old page count before building
+    old_page_count = None
+    if pdfmode == "print":
+        old_page_count = estimate_page_count_from_previous_build(PDF_OUT_PRINT)
+    
     cmd = make_pdf_base_cmd(use_filter, pdfmode=pdfmode, include_sentinel=True)
 
     if pdfmode == "print":
@@ -1917,6 +2017,28 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     run(cmd)
     optimize_pdf(out_path)
     update_page_count_cache(out_path, pdfmode or "screen")
+    
+    # For KDP print builds, verify page count is within limits and margins are adequate
+    if pdfmode == "print":
+        final_page_count = estimate_page_count_from_previous_build(out_path)
+        if final_page_count:
+            required_gutter = get_kdp_gutter_margin(final_page_count)
+            print(f"\n✓ KDP print PDF: {final_page_count} pages, {required_gutter}\" gutter required")
+            
+            # Check if page count exceeds KDP limit
+            if final_page_count > 828:
+                print(f"⚠ WARNING: Page count ({final_page_count}) exceeds KDP's 828-page limit!")
+                print("  Consider reducing font size or content to meet KDP requirements.")
+            
+            # Check if we crossed into a new margin tier
+            if old_page_count:
+                old_gutter = get_kdp_gutter_margin(old_page_count)
+                if old_gutter != required_gutter:
+                    print(f"⚠ MARGIN CHANGE NEEDED: Page count changed from {old_page_count} → {final_page_count}")
+                    print(f"  Gutter requirement: {old_gutter}\" → {required_gutter}\"")
+                    print("  Rebuild with 'python3 build_book.py pdf-print' to apply correct margins.")
+
+
 
 def build_pdf_debug(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build only debug.tex (LaTeX) for inspection."""
@@ -2240,7 +2362,7 @@ def main() -> None:
     if target == "epub":
         action = lambda: build_epub(use_filter=True)
     elif target == "pdf":
-        action = lambda: build_pdf(use_filter=True, pdfmode="screen")
+        action = lambda: build_pdf(use_filter=True)
     elif target == "docx":
         action = lambda: build_docx(use_filter=True)
     elif target == "rtf":
@@ -2310,13 +2432,18 @@ def main() -> None:
         action = lambda: build_all_chapters(use_filter=True, pdfmode="screen")
     elif target == "draft-pdf-chapters":
         action = lambda: build_all_chapters(use_filter=True, pdfmode="screen")
+    elif target == "kdp-cover":
+        # Generate KDP print cover from configuration
+        import subprocess
+        script_path = ROOT / "iasp_tooling" / "scripts" / "generate_kdp_cover.py"
+        action = lambda: subprocess.run([sys.executable, str(script_path)], check=True)
     else:
         print(f"Unknown target: {target}")
         print(
             "Valid targets: epub, pdf, all, draft-epub, draft-pdf, draft-all, "
             "pdf-screen, pdf-print, pdf-debug, pdf-debug-screen, pdf-debug-print, "
             "docx, rtf, pdf-chapters, draft-pdf-chapters, chapter <path>, "
-            "article <path> [output], articles, quote-playground"
+            "article <path> [output], articles, quote-playground, kdp-cover"
         )
         sys.exit(1)
 
