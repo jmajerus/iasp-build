@@ -10,12 +10,113 @@ This guide covers the Python scripts, VS Code tasks, build profiles, and output 
 |--------|---------|-------------|
 | EPUB | `python3 build_book.py epub` | Standard EPUB with Lua filters |
 | PDF (screen) | `python3 build_book.py pdf` | Screen-optimized XeLaTeX |
-| PDF (print) | `python3 build_book.py pdf-print` | Mirrored margins + binding offset |
+| PDF (print) | `python3 build_book.py pdf-print` | KDP-optimized (6.69×9.61", 9pt, auto gutter) |
 | DOCX | `python3 build_book.py docx` | Word-friendly proof copy |
 | RTF | `python3 build_book.py rtf` | Plain RTF for legacy workflows |
 | All | `python3 build_book.py all` | EPUB + PDF + DOCX + RTF |
 
 Draft variants (`draft-epub`, `draft-pdf`, `draft-all`) show `.draft` blocks and hide `.final` blocks.
+
+---
+
+## KDP Print Optimization: Intelligent Margin Calculation
+
+The `pdf-print` target uses a **predictive heuristic** to automatically calculate KDP-compliant margins, solving the classic "chicken-and-egg" problem: we need page count to determine required gutter margins, but page count depends on the margins we use.
+
+### The Problem
+
+Amazon KDP has **page-count-based gutter requirements** for perfect binding:
+
+| Page Count | Minimum Gutter (Inside Margin) |
+|------------|--------------------------------|
+| 24-150 pages | 0.375" |
+| 151-300 pages | 0.5" |
+| 301-500 pages | 0.625" |
+| 501-700 pages | 0.75" |
+| 701-828 pages | 0.875" |
+
+**The circular dependency**: To build the PDF, we need to know which gutter to use. But the gutter depends on the final page count, which we don't know until after building.
+
+**Naive approach**: Build repeatedly until margins stabilize (inefficient, requires manual rebuilds when crossing tier boundaries).
+
+### The Solution: Text Area Ratio Heuristic
+
+Page count scales **inversely** with text area. If you reduce text area by 10%, you need ~10% more pages to fit the same content. We use this relationship to **predict** the stable gutter margin in a single build pass.
+
+**Algorithm**:
+1. Read previous build's page count (e.g., 734 pages)
+2. Infer the gutter used in that build (0.875" for 701-828 tier)
+3. Test each possible gutter tier (0.375", 0.5", 0.625", 0.75", 0.875"):
+   - Calculate predicted page count: `old_pages × (old_text_area / new_text_area)`
+   - Check if prediction is **stable**: Does `get_kdp_gutter_margin(predicted)` equal the tested gutter?
+4. Choose the **most conservative** stable option (largest gutter for maximum headroom below 828 limit)
+5. Build **once** with that gutter
+6. Verify prediction accuracy and warn if tier boundary crossed
+
+### Example
+
+Starting from 734-page build with 0.875" gutter, testing all candidates:
+
+```
+Testing gutter candidates:
+  0.375" → predicts 668 pages → requires 0.75"   [unstable]
+  0.5"   → predicts 683 pages → requires 0.75"   [unstable]
+  0.625" → predicts 699 pages → requires 0.75"   [unstable]
+  0.75"  → predicts 716 pages → requires 0.875"  [unstable]
+  0.875" → predicts 734 pages → requires 0.875"  ✓ STABLE
+
+→ Predicted 734 pages with 0.875" gutter
+✓ Build completes: 734 pages, 0.875" gutter required
+```
+
+**Result**: Single build, no iteration needed. System automatically adjusts as manuscript grows.
+
+### Benefits
+
+- ✅ **Single-build convergence**: No manual rebuilds when crossing tier boundaries
+- ✅ **Automatic adaptation**: Handles manuscript growth seamlessly
+- ✅ **Conservative margins**: Maximizes quality and headroom under 828-page limit
+- ✅ **Self-correcting**: Validates predictions and warns if tier changes
+- ✅ **Transparent**: Clear diagnostic output shows prediction logic
+
+### Build Output
+
+```bash
+$ python3 build_book.py pdf-print
+
+→ Predicted 734 pages with 0.875" gutter (based on 734-page previous build)
+✓ KDP print PDF: 734 pages, 0.875" gutter required
+```
+
+If the prediction is slightly off and crosses a tier boundary, the system warns:
+
+```
+⚠ MARGIN CHANGE NEEDED: Page count changed from 724 → 734
+  Gutter requirement: 0.75" → 0.875"
+  Recommendation: Rebuild for optimal margins
+```
+
+The next build will automatically use the correct tier, converging in typically 1-2 passes.
+
+### Technical Details
+
+**Prediction formula**:
+```python
+predicted_pages = old_page_count × (old_text_area / new_text_area)
+
+where:
+    old_text_area = (trim_width - old_gutter - outside) × (trim_height - top - bottom)
+    new_text_area = (trim_width - new_gutter - outside) × (trim_height - top - bottom)
+```
+
+**Stable solution**: A gutter `G` is stable when:
+```python
+get_kdp_gutter_margin(predicted_pages_with_G) == G
+```
+
+For most manuscripts, there are 1-2 stable solutions. We choose the most conservative (largest gutter) to maximize readability and minimize risk of exceeding the 828-page limit.
+
+**Fallback**: First build without previous PDF uses 0.875" (most conservative), suitable for thick books.
 
 ---
 
