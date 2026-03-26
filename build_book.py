@@ -1938,7 +1938,9 @@ def make_pdf_base_cmd(
         # KDP minimums: outside 0.375", top/bottom 0.375"
         # We use professional book margins for comfortable reading
         # (KDP gutter requirement met, other margins generous for readability)
-        geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right=0.75in,top=0.75in,bottom=0.875in,twoside=false"
+        # Both left (gutter on odd/recto pages) and right (gutter on even/verso
+        # pages) must meet the KDP minimum. Use the same buffer on both sides.
+        geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right={gutter}in,top=0.75in,bottom=0.875in,twoside=false"
         cmd += [f"--variable=geometry:{geometry_opts}"]
     elif pdfmode == "screen":
         # Screen: explicit 6×9" configuration with comfortable margins
@@ -2198,6 +2200,9 @@ def check_print_pdf(pdf_path: Path | None = None, *, fast: bool = False) -> bool
         print(f"  {label:<{_W}} SKIP — pdffonts not found")
 
     # ── 4. Gutter margins ──────────────────────────────────────────────────
+    # In a twoside=false print book, odd (recto) pages have the gutter on the
+    # LEFT, even (verso) pages have the gutter on the RIGHT.  Both must clear
+    # the KDP minimum.
     label = "[4/4] Gutter margins"
     if fast:
         print(f"  {label:<{_W}} SKIP — run 'python3 build_book.py pdf-check' before uploading")
@@ -2205,6 +2210,7 @@ def check_print_pdf(pdf_path: Path | None = None, *, fast: bool = False) -> bool
         print(f"  {label:<{_W}} SKIP — page count unknown, cannot determine threshold")
     else:
         kdp_min_bp = get_kdp_gutter_margin(page_count) * 72.0
+        page_w_bp = exp_w_pt  # page width in bp (= pt at 72dpi)
         print(
             f"  {label:<{_W}} scanning {page_count} pages (~2 min) ...",
             end="", flush=True,
@@ -2213,30 +2219,44 @@ def check_print_pdf(pdf_path: Path | None = None, *, fast: bool = False) -> bool
             ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=bbox", str(pdf_path)],
             capture_output=True, text=True,
         )
-        violations: list[tuple[int, float]] = []
-        min_x1 = float("inf")
+        violations: list[tuple[int, str, float]] = []  # (page, side, margin_bp)
+        min_left = float("inf")
+        min_right = float("inf")
         pg = 0
         for line in gs.stderr.splitlines():
             if "%%HiResBoundingBox:" in line:
                 pg += 1
                 try:
-                    x1 = float(line.split()[1])
-                    min_x1 = min(min_x1, x1)
-                    if x1 < kdp_min_bp:
-                        violations.append((pg, x1))
+                    parts = line.split()
+                    x1, x2 = float(parts[1]), float(parts[3])
+                    if pg % 2 == 1:  # odd/recto: gutter is left
+                        min_left = min(min_left, x1)
+                        if x1 < kdp_min_bp:
+                            violations.append((pg, "L", x1))
+                    else:            # even/verso: gutter is right
+                        right_margin = page_w_bp - x2
+                        min_right = min(min_right, right_margin)
+                        if right_margin < kdp_min_bp:
+                            violations.append((pg, "R", right_margin))
                 except (IndexError, ValueError):
                     pass
-        min_str = f"{min_x1:.1f}bp" if min_x1 != float("inf") else "—"
+        left_s  = f"{min_left:.1f}bp"  if min_left  != float("inf") else "—"
+        right_s = f"{min_right:.1f}bp" if min_right != float("inf") else "—"
         if not violations:
-            # \r overwrites the "scanning ..." line
-            print(f"\r  {label:<{_W}} PASS — min: {min_str}, threshold: {kdp_min_bp:.1f}bp     ")
+            print(
+                f"\r  {label:<{_W}} PASS — "
+                f"left(odd) min: {left_s},  right(even) min: {right_s},  "
+                f"threshold: {kdp_min_bp:.1f}bp     "
+            )
         else:
             print(
                 f"\r  {label:<{_W}} FAIL — {len(violations)} pages below"
-                f" {kdp_min_bp:.1f}bp  (min: {min_str})  "
+                f" {kdp_min_bp:.1f}bp  "
+                f"(left min: {left_s}, right min: {right_s})"
             )
-            for pg_num, x1 in violations[:10]:
-                print(f"        Page {pg_num}: {x1:.3f}bp")
+            for pg_num, side, margin in violations[:10]:
+                side_label = "left" if side == "L" else "right"
+                print(f"        Page {pg_num} ({side_label}): {margin:.3f}bp")
             if len(violations) > 10:
                 print(f"        ... and {len(violations) - 10} more")
             all_passed = False

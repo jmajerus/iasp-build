@@ -25,6 +25,11 @@
 \usepackage{enumitem}
 \usepackage{ltablex}  % Extends longtable with tabularx features
 \fvset{breaklines=true,breakanywhere=true}
+% Alias the standard \begin{verbatim} environment to fancyvrb's \begin{Verbatim}
+% so that it also inherits breaklines=true from \fvset above.  Without this,
+% indented code blocks (which Pandoc renders as \begin{verbatim}) silently
+% overflow the page margin on long single-line content.
+\RecustomVerbatimEnvironment{verbatim}{Verbatim}{}
 \csname tracinglostchars\endcsname=1
 
 % --------------------------------------------------
