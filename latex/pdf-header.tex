@@ -316,6 +316,7 @@
 % The \PrintGeometryOptions and \ScreenGeometryOptions are kept for reference
 % but no longer used directly
 \usepackage{microtype} % nicer text spacing
+\usepackage{xurl}      % allow URL line-breaks at slashes, dots, etc.
 
 % --------------------------------------------------
 % Page style (headers/footers)
@@ -387,17 +388,22 @@
   \fi
 }
 
-% For print, use a classic running-head layout.
+% For print, folio is at the outer margin edge; running head at the inner edge.
+%   Even (verso): folio outer-left [LE], running head inner-right [RE]
+%   Odd  (recto): running head inner-left [LO], folio outer-right [RO]
+% They occupy separate header zones with the full column width between them.
+% Footer is empty; no wasted space at the bottom.
 % For screen, keep things subdued: footer page number only,
 % and no horizontal head rule.
 \ifthenelse{\boolean{isprint}}{%%
   \pagestyle{fancy}
-  \fancyhf{}% clear
-  % Page number at bottom center (use small font for print)
-  \fancyfoot[C]{\small\thepage}
-  % Running heads: small italic for visual separation (if enabled)
-  % LE = Left side on Even pages, RO = Right side on Odd pages
-  \fancyhead[LE,RO]{\iaspRunningHeadText}
+  \fancyhf{}% clear all
+  % Verso: folio at outer-left, running head at inner-right
+  \fancyhead[LE]{\small\thepage}
+  \fancyhead[RE]{\iaspRunningHeadText}
+  % Recto: running head at inner-left, folio at outer-right
+  \fancyhead[LO]{\iaspRunningHeadText}
+  \fancyhead[RO]{\small\thepage}
   % Keep default \headrulewidth (visible horizontal line)
 }{%%
   % Screen: minimal; running heads are optional and disabled by default
@@ -410,11 +416,15 @@
 
 \fancypagestyle{plain}{%% ensure chapter-opening pages follow the same rules
   \fancyhf{}
-  \fancyfoot[C]{\ifthenelse{\boolean{isprint}}{\small\thepage}{\thepage}}
-  \fancyhead[LE,RO]{\iaspRunningHeadText}
   \ifthenelse{\boolean{isprint}}{%%
+    \fancyhead[LE]{\small\thepage}%%
+    \fancyhead[RE]{\iaspRunningHeadText}%%
+    \fancyhead[LO]{\iaspRunningHeadText}%%
+    \fancyhead[RO]{\small\thepage}%%
     \renewcommand{\headrulewidth}{0.4pt}%%
   }{%%
+    \fancyfoot[C]{\thepage}%%
+    \fancyhead[LE,RO]{\iaspRunningHeadText}%%
     \renewcommand{\headrulewidth}{0pt}%%
   }
 }

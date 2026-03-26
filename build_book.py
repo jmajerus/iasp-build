@@ -1743,13 +1743,16 @@ def repair_epub_navigation(epub_path: Path) -> None:
     _rewrite_epub_archive(epub_path, nav_text=nav_updated, toc_text=toc_updated)
 
 
-def read_book_order() -> list[str]:
+def read_book_order(for_format: str | None = None) -> list[str]:
     """
     Read book-order.txt and return a list of input file paths (as strings),
     resolved relative to ROOT.
 
     - Ignores blank lines
     - Ignores lines starting with '#'
+    - If ``for_format`` is given, entries tagged ``# [skip: <format>]`` are
+      excluded (e.g. ``for_format="pdf"`` omits cover pages not wanted in
+      KDP print interiors).
     """
     try:
         order_data = load_book_order(BOOK_ORDER)
@@ -1763,6 +1766,14 @@ def read_book_order() -> list[str]:
     if not inputs:
         print("!! No input files found in book-order.txt")
         sys.exit(1)
+
+    if for_format:
+        skip_set = set(order_data.skip_for_formats.get(for_format.lower(), []))
+        if skip_set:
+            skipped = [p for p in inputs if any(p.endswith(s) or s in p for s in skip_set)]
+            inputs = [p for p in inputs if not any(p.endswith(s) or s in p for s in skip_set)]
+            for s in skipped:
+                print(f"-- Skipping (format={for_format}): {s}")
 
     return inputs
 
@@ -1856,7 +1867,7 @@ def make_pdf_base_cmd(
     run_generate_toc()
     run_generate_order_snapshot()
     ensure_metadata_json()
-    inputs = read_book_order()
+    inputs = read_book_order(for_format="pdf")
     verify_citations(inputs)
 
     cmd: list[str] = ["pandoc", *inputs, f"--from={PANDOC_MARKDOWN_INPUT}"]

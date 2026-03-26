@@ -490,7 +490,7 @@ describe('generateListJsonLD', () => {
 **Phase 1 – Data Pipeline MVP**
 - Build a Python importer (`scripts/preprocessor/import_linkbud.py`) that expands JSON-LD with `pyld`, resolves the graph while preserving shared nodes, and emits a normalized cache (YAML or JSON) for the Lua filter.
 - Add Markdown rendering for LinkBud descriptions using `pandoc`/`pypandoc`, storing both raw text and sanitized Pandoc AST fragments for slot injection.
-- Wire the importer into `scripts/pre_build_hooks/catalog_helper.py` so fresh LinkBud data is pulled/validated automatically before Pandoc runs.
+- Wire the importer into the build pipeline so fresh LinkBud data is pulled/validated automatically before Pandoc runs.
 
 **Phase 2 – Catalog Integration**
 - Teach `catalog_collections.lua` to read the normalized cache directly, allowing Appendix W slot placeholders (`div.catalog-slot`) to reference LinkBud-derived collections without manual editing.

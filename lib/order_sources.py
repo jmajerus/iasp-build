@@ -36,6 +36,11 @@ SERIES_FILENAMES = ("series.yaml", "series.yml", "series.json")
 ORDER_FILENAME = ".order"
 
 
+# Regex to detect an inline skip annotation on an entry line, e.g.
+# "front matter/Cover.md  # [skip: pdf]" or "# [skip: pdf, epub]"
+_SKIP_TAG_RE = re.compile(r"#\s*\[skip:\s*([^\]]+)\]", re.IGNORECASE)
+
+
 @dataclass(frozen=True)
 class BookOrderData:
     entries: list[str]
@@ -43,6 +48,12 @@ class BookOrderData:
     chapter_labels: dict[str, tuple[str, str]]
     sidebar_labels: dict[str, str]
     appendix_labels: dict[str, str]
+    skip_for_formats: dict[str, list[str]] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        # Use object.__setattr__ because the dataclass is frozen.
+        if self.skip_for_formats is None:
+            object.__setattr__(self, "skip_for_formats", {})
 
     def label_for(self, rel_path: str) -> str:
         return derive_label(
@@ -102,9 +113,10 @@ def load_book_order(order_path: Path, root: Path | None = None) -> BookOrderData
     chapter_labels: dict[str, tuple[str, str]] = {}
     sidebar_labels: dict[str, str] = {}
     appendix_labels: dict[str, str] = {}
+    skip_for_formats: dict[str, list[str]] = {}
 
     def _merge_labels(included: BookOrderData) -> None:
-        """Merge labels from an included order file."""
+        """Merge labels and skip-format annotations from an included order file."""
         for path, label in included.front_labels.items():
             if path not in front_labels:
                 front_labels[path] = label
@@ -117,6 +129,8 @@ def load_book_order(order_path: Path, root: Path | None = None) -> BookOrderData
         for path, label in included.appendix_labels.items():
             if path not in appendix_labels:
                 appendix_labels[path] = label
+        for fmt, paths in included.skip_for_formats.items():
+            skip_for_formats.setdefault(fmt, []).extend(paths)
 
     with order_path.open(encoding="utf-8") as handle:
         for raw in handle:
@@ -172,9 +186,19 @@ def load_book_order(order_path: Path, root: Path | None = None) -> BookOrderData
             if line.startswith("#"):
                 continue
 
+            # Strip inline skip annotations, e.g. "path/to/file.md  # [skip: pdf]"
+            skip_match = _SKIP_TAG_RE.search(line)
+            if skip_match:
+                formats = [f.strip().lower() for f in skip_match.group(1).split(",")]
+                clean_path = normalize_path(line[:skip_match.start()].rstrip())
+                for fmt in formats:
+                    skip_for_formats.setdefault(fmt, []).append(clean_path)
+                entries.append(clean_path)
+                continue
+
             entries.append(normalize_path(line))
 
-    return BookOrderData(entries, front_labels, chapter_labels, sidebar_labels, appendix_labels)
+    return BookOrderData(entries, front_labels, chapter_labels, sidebar_labels, appendix_labels, skip_for_formats)
 
 
 def _assign_label_pair(raw: str, prefix: str, target: dict[str, str]) -> None:
