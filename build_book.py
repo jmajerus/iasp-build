@@ -2078,6 +2078,182 @@ def estimate_page_count_from_previous_build(output_path: Path) -> int | None:
     return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# KDP Pre-Submission Check
+# ─────────────────────────────────────────────────────────────────────────────
+
+_KDP_MAX_PAGES = 828  # KDP hard limit for 6×9" perfect binding
+
+
+def check_print_pdf(pdf_path: Path | None = None, *, fast: bool = False) -> bool:
+    """Run KDP pre-submission checks on the print PDF.
+
+    Performs four checks:
+      1. Page count    — within KDP's 828-page hard limit
+      2. Page dimensions — match the trim size from iasp-config.yaml (±2pt)
+      3. Font embedding  — all fonts embedded (KDP requirement)
+      4. Gutter margins  — full Ghostscript bbox scan; skipped when fast=True
+
+    Args:
+        pdf_path: Path to the print PDF; defaults to PDF_OUT_PRINT.
+        fast: If True, skip the Ghostscript gutter scan (~2 min) and print a
+              reminder to run 'pdf-check' before uploading to KDP.
+
+    Returns:
+        True if every performed check passes, False if any check fails.
+    """
+    if pdf_path is None:
+        pdf_path = PDF_OUT_PRINT
+
+    _SEP = "─" * 66
+    _W = 26  # label column width
+
+    print(f"\n{_SEP}")
+    print(f"  KDP Print Pre-Check")
+    print(f"  {pdf_path}")
+    print(_SEP)
+
+    if not pdf_path.exists():
+        print(f"  FAIL — file not found: {pdf_path}")
+        print(_SEP)
+        return False
+
+    all_passed = True
+
+    # ── 1. Page count ──────────────────────────────────────────────────────
+    label = "[1/4] Page count"
+    page_count = probe_pdf_page_count(pdf_path)
+    if page_count is None:
+        print(f"\n  {label:<{_W}} SKIP — pdfinfo unavailable")
+    elif page_count > _KDP_MAX_PAGES:
+        print(f"\n  {label:<{_W}} FAIL — {page_count} pages exceeds KDP limit of {_KDP_MAX_PAGES}")
+        all_passed = False
+    else:
+        req = get_kdp_gutter_margin(page_count)
+        print(f"\n  {label:<{_W}} PASS — {page_count} pages  (max: {_KDP_MAX_PAGES},  gutter req: {req}\")")
+
+    # ── 2. Page dimensions ─────────────────────────────────────────────────
+    label = "[2/4] Page dimensions"
+    kdp_cfg = _config_section("kdp")
+    exp_w_in = _config_float(kdp_cfg.get("trim_width"), 6.69)
+    exp_h_in = _config_float(kdp_cfg.get("trim_height"), 9.61)
+    exp_w_pt = round(exp_w_in * 72, 2)
+    exp_h_pt = round(exp_h_in * 72, 2)
+    _DIM_TOL = 2.0  # ±2pt (~0.028")
+    try:
+        pi = subprocess.run(
+            ["pdfinfo", str(pdf_path)],
+            capture_output=True, text=True, check=False,
+        )
+        found_w: float | None = None
+        found_h: float | None = None
+        for line in pi.stdout.splitlines():
+            if line.lower().startswith("page size"):
+                parts = line.split(":", 1)[-1].strip().split()
+                # "481.89 x 691.65 pts" → ['481.89', 'x', '691.65', 'pts']
+                if len(parts) >= 3:
+                    try:
+                        found_w, found_h = float(parts[0]), float(parts[2])
+                    except ValueError:
+                        pass
+                break
+        if found_w is None:
+            print(f"  {label:<{_W}} SKIP — could not parse page size from pdfinfo")
+        elif abs(found_w - exp_w_pt) <= _DIM_TOL and abs(found_h - exp_h_pt) <= _DIM_TOL:
+            print(f"  {label:<{_W}} PASS — {found_w:.1f} × {found_h:.1f} pt  ({exp_w_in}\" × {exp_h_in}\")")
+        else:
+            print(
+                f"  {label:<{_W}} FAIL — got {found_w:.1f} × {found_h:.1f} pt,"
+                f" expected {exp_w_pt:.1f} × {exp_h_pt:.1f} pt"
+            )
+            all_passed = False
+    except FileNotFoundError:
+        print(f"  {label:<{_W}} SKIP — pdfinfo not found")
+
+    # ── 3. Font embedding ──────────────────────────────────────────────────
+    label = "[3/4] Font embedding"
+    try:
+        pf = subprocess.run(
+            ["pdffonts", str(pdf_path)],
+            capture_output=True, text=True, check=False,
+        )
+        lines = pf.stdout.splitlines()
+        unembedded: list[str] = []
+        if len(lines) >= 2:
+            # Find "emb" column by its position in the header line
+            emb_pos = lines[0].find("emb")
+            if emb_pos >= 0:
+                for line in lines[2:]:
+                    if len(line) > emb_pos and line[emb_pos: emb_pos + 3].strip() == "no":
+                        font_name = line.split()[0] if line.split() else "?"
+                        unembedded.append(font_name)
+        if not unembedded:
+            print(f"  {label:<{_W}} PASS — all fonts embedded")
+        else:
+            names = ", ".join(unembedded[:5])
+            extra_s = f" (+{len(unembedded) - 5} more)" if len(unembedded) > 5 else ""
+            print(f"  {label:<{_W}} FAIL — {len(unembedded)} unembedded: {names}{extra_s}")
+            all_passed = False
+    except FileNotFoundError:
+        print(f"  {label:<{_W}} SKIP — pdffonts not found")
+
+    # ── 4. Gutter margins ──────────────────────────────────────────────────
+    label = "[4/4] Gutter margins"
+    if fast:
+        print(f"  {label:<{_W}} SKIP — run 'python3 build_book.py pdf-check' before uploading")
+    elif page_count is None:
+        print(f"  {label:<{_W}} SKIP — page count unknown, cannot determine threshold")
+    else:
+        kdp_min_bp = get_kdp_gutter_margin(page_count) * 72.0
+        print(
+            f"  {label:<{_W}} scanning {page_count} pages (~2 min) ...",
+            end="", flush=True,
+        )
+        gs = subprocess.run(
+            ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=bbox", str(pdf_path)],
+            capture_output=True, text=True,
+        )
+        violations: list[tuple[int, float]] = []
+        min_x1 = float("inf")
+        pg = 0
+        for line in gs.stderr.splitlines():
+            if "%%HiResBoundingBox:" in line:
+                pg += 1
+                try:
+                    x1 = float(line.split()[1])
+                    min_x1 = min(min_x1, x1)
+                    if x1 < kdp_min_bp:
+                        violations.append((pg, x1))
+                except (IndexError, ValueError):
+                    pass
+        min_str = f"{min_x1:.1f}bp" if min_x1 != float("inf") else "—"
+        if not violations:
+            # \r overwrites the "scanning ..." line
+            print(f"\r  {label:<{_W}} PASS — min: {min_str}, threshold: {kdp_min_bp:.1f}bp     ")
+        else:
+            print(
+                f"\r  {label:<{_W}} FAIL — {len(violations)} pages below"
+                f" {kdp_min_bp:.1f}bp  (min: {min_str})  "
+            )
+            for pg_num, x1 in violations[:10]:
+                print(f"        Page {pg_num}: {x1:.3f}bp")
+            if len(violations) > 10:
+                print(f"        ... and {len(violations) - 10} more")
+            all_passed = False
+
+    # ── Summary ────────────────────────────────────────────────────────────
+    print(f"\n{_SEP}")
+    if all_passed:
+        if fast:
+            print("  ✓ Fast checks passed — run 'pdf-check' to verify gutter margins before uploading.")
+        else:
+            print("  ✓ All checks passed — PDF is ready for KDP upload.")
+    else:
+        print("  ✗ Pre-check FAILED — resolve the issues above before uploading to KDP.")
+    print(_SEP + "\n")
+    return all_passed
+
+
 def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build the final PDF via XeLaTeX.
 
@@ -2107,26 +2283,18 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     optimize_pdf(out_path)
     update_page_count_cache(out_path, pdfmode or "screen")
     
-    # For KDP print builds, verify page count is within limits and margins are adequate
+    # For KDP print builds, run fast pre-submission checks and warn on tier changes
     if pdfmode == "print":
-        final_page_count = estimate_page_count_from_previous_build(out_path)
-        if final_page_count:
-            required_gutter = get_kdp_gutter_margin(final_page_count)
-            actual_gutter = round(required_gutter + _KDP_GUTTER_BUFFER, 3)
-            print(f"\n✓ KDP print PDF: {final_page_count} pages, {required_gutter}\" KDP minimum, {actual_gutter}\" actual gutter")
-            
-            # Check if page count exceeds KDP limit
-            if final_page_count > 828:
-                print(f"⚠ WARNING: Page count ({final_page_count}) exceeds KDP's 828-page limit!")
-                print("  Consider reducing font size or content to meet KDP requirements.")
-            
-            # Check if we crossed into a new margin tier
-            if old_page_count:
-                old_required = get_kdp_gutter_margin(old_page_count)
-                if old_required != required_gutter:
-                    print(f"⚠ MARGIN CHANGE NEEDED: Page count changed from {old_page_count} → {final_page_count}")
-                    print(f"  Gutter requirement: {old_required}\" → {required_gutter}\"")
-                    print("  Rebuild with 'python3 build_book.py pdf-print' to apply correct margins.")
+        check_print_pdf(out_path, fast=True)
+        # Warn if the page count crossed a KDP gutter tier since the last build
+        if old_page_count:
+            new_count = probe_pdf_page_count(out_path)
+            if new_count:
+                old_tier = get_kdp_gutter_margin(old_page_count)
+                new_tier = get_kdp_gutter_margin(new_count)
+                if old_tier != new_tier:
+                    print(f"⚠  Gutter tier changed: {old_tier}\" → {new_tier}\"")
+                    print("   Rebuild with 'python3 build_book.py pdf-print' to apply the new margin.")
 
 
 
@@ -2446,6 +2614,12 @@ def main() -> None:
         target = args[0].lower()
         extra = args[1:]
 
+    # pdf-check is read-only: bypass the build pipeline entirely
+    if target == "pdf-check":
+        pdf_arg = Path(extra[0]) if extra else None
+        passed = check_print_pdf(pdf_arg)
+        sys.exit(0 if passed else 1)
+
     build_stage = determine_build_stage(target)
     action = None
 
@@ -2531,7 +2705,8 @@ def main() -> None:
         print(f"Unknown target: {target}")
         print(
             "Valid targets: epub, pdf, all, draft-epub, draft-pdf, draft-all, "
-            "pdf-screen, pdf-print, pdf-debug, pdf-debug-screen, pdf-debug-print, "
+            "pdf-screen, pdf-print, pdf-check [path], "
+            "pdf-debug, pdf-debug-screen, pdf-debug-print, "
             "docx, rtf, pdf-chapters, draft-pdf-chapters, chapter <path>, "
             "article <path> [output], articles, quote-playground, kdp-cover"
         )
