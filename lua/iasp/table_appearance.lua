@@ -265,7 +265,12 @@ function M.create(opts)
 
     for _, block in ipairs(div.content) do
       if block.t == "Table" then
-        if wants_compact then
+        -- Check if already wrapped by a prior pass (e.g. handle_bare_table ran
+        -- first in bottom-up traversal and inserted RawBlock wrappers before us).
+        local prev = next_blocks[#next_blocks]
+        local already_wrapped = prev and prev.t == "RawBlock" and prev.format == "latex"
+          and prev.text:find("\\iaspTableCompactStart")
+        if wants_compact and not already_wrapped then
           table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactStart\n"))
         end
         if wants_bordered then
@@ -283,7 +288,7 @@ function M.create(opts)
         if wants_bordered then
           table.insert(next_blocks, pandoc.RawBlock("latex", "\\end{iaspTableBordered}\n"))
         end
-        if wants_compact then
+        if wants_compact and not already_wrapped then
           table.insert(next_blocks, pandoc.RawBlock("latex", "\\iaspTableCompactEnd\n"))
         end
         updated = true

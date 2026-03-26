@@ -82,7 +82,7 @@
   \setlist[itemize,1]{label={},labelsep=0pt,leftmargin=2.1em,itemindent=0pt,listparindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
   \setlist[itemize,2]{label=\textbullet,labelsep=0.35em,labelwidth=1em,leftmargin=2.6em,itemindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
   \setlist[itemize,3]{label=\textbullet,labelsep=0.35em,labelwidth=1em,leftmargin=3.4em,itemindent=0pt,align=left,itemsep=0pt,topsep=0.2em,parsep=0pt}%
-  \setlist[enumerate,1]{labelsep=0.35em,labelwidth=1.6em,leftmargin=2.1em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
+  \setlist[enumerate,1]{labelsep=0.35em,labelwidth=2.1em,leftmargin=2.6em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
   \setlist[enumerate,2]{labelsep=0.35em,labelwidth=1.6em,leftmargin=2.9em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
   \setlist[enumerate,3]{labelsep=0.35em,labelwidth=1.6em,leftmargin=3.7em,align=right,itemindent=0pt,itemsep=0pt,topsep=0.2em,parsep=0pt}%
 }{\endgroup}
@@ -233,6 +233,18 @@
   \llap{{\noteglyphfont #1}\hspace{0.35em}}%% tighter hang for collection-level glyphs
 }
 
+% In print mode, glyphs must NOT hang into the gutter (KDP margin enforcement).
+% Redefine after isprint is known; \AtBeginDocument ensures it overrides any
+% later redefinitions from included packages.
+\newcommand{\iaspRedefineGlyphMacrosForPrint}{%%
+  \renewcommand{\sectionheadingglyph}[1]{%%
+    {\noteglyphfont ##1}\hspace{0.4em}%%
+  }%%
+  \renewcommand{\collectionheadingglyph}[1]{%%
+    {\noteglyphfont ##1}\hspace{0.3em}%%
+  }%%
+}
+
 % Pandoc will set \pdfmode via --variable=pdfmode:MODE or metadata.
 % We interpret that into booleans for use below. If \pdfmode is
 % undefined or not 'print', we default to 'screen'.
@@ -285,6 +297,7 @@
     \renewcommand{\huge}{\fontsize{17pt}{20pt}\selectfont}%%
     \renewcommand{\Huge}{\fontsize{20pt}{24pt}\selectfont}%%
     \normalsize  %% Apply immediately
+    \iaspRedefineGlyphMacrosForPrint  %% Inline glyphs: no llap into gutter
   }%%
 }{}
 

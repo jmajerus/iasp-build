@@ -1879,12 +1879,26 @@ def make_pdf_base_cmd(
     if pdfmode == "print":
         # KDP print: 6.69×9.61" trim size with dynamically calculated margins
         
+        # Safety buffer: add extra inches above the KDP minimum gutter to absorb
+        # content that bleeds left of the text block left edge. Known bleed sources:
+        # - colortbl \rowcolors background fills extend \tabcolsep (2.5pt=1.77bp)
+        #   to the LEFT of the table's @{} column spec boundary. This is a known
+        #   colortbl behaviour: row color fills include the outer \tabcolsep even
+        #   when @{} is used in the column spec.
+        # - Rounding of LaTeX \real{} column width fractions can add ~0.04bp.
+        # Minimum needed: 2.5pt (1.77bp) + safety = ~2bp ≈ 0.028". Use 0.05" 
+        # (3.6bp) to give plenty of headroom while keeping text-block reduction 
+        # minimal (0.025" wider margins = 1.8bp per side).
+        _KDP_GUTTER_BUFFER = 0.05
+        
         # Get previous build info to predict optimal gutter
         prev_page_count = estimate_page_count_from_previous_build(PDF_OUT_PRINT)
         
         if prev_page_count:
-            # Use predictive heuristic to find stable gutter margin
-            # Start with the gutter that was used in previous build
+            # Use predictive heuristic to find stable gutter margin.
+            # The stability test uses official KDP minimums (no buffer) so that
+            # page-count tier boundaries are detected correctly. The buffer is
+            # applied only to the final LaTeX geometry value.
             old_gutter = get_kdp_gutter_margin(prev_page_count)
             
             # Predict what page count we'd get with each possible gutter tier
@@ -1907,15 +1921,18 @@ def make_pdf_base_cmd(
             if stable_options:
                 # Choose the most conservative option (largest gutter) for headroom
                 # under the 828-page limit
-                gutter, predicted_pages = stable_options[-1]
-                print(f"→ Predicted {predicted_pages} pages with {gutter}\" gutter (based on {prev_page_count}-page previous build)")
+                kdp_minimum, predicted_pages = stable_options[-1]
+                gutter = kdp_minimum + _KDP_GUTTER_BUFFER
+                print(f"→ Predicted {predicted_pages} pages with {kdp_minimum}\" KDP minimum gutter → using {gutter}\" (based on {prev_page_count}-page previous build)")
             else:
                 # No stable solution found (shouldn't happen), use conservative
-                gutter = 0.875
+                kdp_minimum = 0.875
+                gutter = kdp_minimum + _KDP_GUTTER_BUFFER
                 print(f"→ Using conservative KDP margins: {gutter}\" gutter")
         else:
             # No previous build: use conservative margins for thick books
-            gutter = 0.875
+            kdp_minimum = 0.875
+            gutter = kdp_minimum + _KDP_GUTTER_BUFFER
             print(f"→ No previous build found, using conservative KDP margins: {gutter}\" gutter")
         
         # KDP minimums: outside 0.375", top/bottom 0.375"
@@ -2095,7 +2112,8 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
         final_page_count = estimate_page_count_from_previous_build(out_path)
         if final_page_count:
             required_gutter = get_kdp_gutter_margin(final_page_count)
-            print(f"\n✓ KDP print PDF: {final_page_count} pages, {required_gutter}\" gutter required")
+            actual_gutter = round(required_gutter + _KDP_GUTTER_BUFFER, 3)
+            print(f"\n✓ KDP print PDF: {final_page_count} pages, {required_gutter}\" KDP minimum, {actual_gutter}\" actual gutter")
             
             # Check if page count exceeds KDP limit
             if final_page_count > 828:
@@ -2104,10 +2122,10 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
             
             # Check if we crossed into a new margin tier
             if old_page_count:
-                old_gutter = get_kdp_gutter_margin(old_page_count)
-                if old_gutter != required_gutter:
+                old_required = get_kdp_gutter_margin(old_page_count)
+                if old_required != required_gutter:
                     print(f"⚠ MARGIN CHANGE NEEDED: Page count changed from {old_page_count} → {final_page_count}")
-                    print(f"  Gutter requirement: {old_gutter}\" → {required_gutter}\"")
+                    print(f"  Gutter requirement: {old_required}\" → {required_gutter}\"")
                     print("  Rebuild with 'python3 build_book.py pdf-print' to apply correct margins.")
 
 
