@@ -1892,8 +1892,9 @@ def make_pdf_base_cmd(
             print(f"→ No previous build found, using conservative KDP margins: {gutter}\" gutter")
         
         # KDP minimums: outside 0.375", top/bottom 0.375"
-        # We use slightly generous margins to ensure comfortable reading
-        geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right=0.5in,top=0.625in,bottom=0.625in,twoside=false"
+        # We use professional book margins for comfortable reading
+        # (KDP gutter requirement met, other margins generous for readability)
+        geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right=0.75in,top=0.75in,bottom=0.875in,twoside=false"
         cmd += [f"--variable=geometry:{geometry_opts}"]
     elif pdfmode == "screen":
         # Screen: explicit 6×9" configuration with comfortable margins
