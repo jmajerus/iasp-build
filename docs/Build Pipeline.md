@@ -237,8 +237,56 @@ Standalone scholarly papers or companion booklets:
 Single-file essays under `articles/`:
 - `python3 build_book.py article <slug>` — Single article
 - `python3 build_book.py articles` — Batch rebuild all
+- `python3 build_book.py article-md <slug-or-path>` — Expanded Markdown for Ghost/CMS
+- `python3 build_book.py articles-md` — Batch expanded Markdown build
 - Outputs to `build/articles/`
 - Suppresses book front/back matter by default
+
+Expanded Markdown artifacts are written to `build/ghost/` and resolve include
+directives inline.
+
+### Article AI Disclosure Metadata
+
+Per-article AI disclosure metadata can be stored in a sidecar file next to the
+article source:
+
+- `articles/<Article Name>.ai.json`
+
+Supported fields:
+
+- `turns`: exact integer turn count
+- `turns_fuzzy_min`, `turns_fuzzy_max`: optional fuzzy range bounds
+- `turns_bucket_override`: optional fixed linguistic label (for example, `several`)
+- `ai_disclosure`: disclosure template line
+- `technical_note`: technical template line
+
+Template placeholders available during export:
+
+- `{turns}` or `{turns_exact}`
+- `{turns_fuzzy}`
+- `{turns_display}`
+- `{turns_bucket}`
+- `{turns_bucket_phrase}`
+
+When `turns_bucket_override` is present, it is used for `{turns_bucket}` and
+`{turns_bucket_phrase}` instead of automatic bucketing.
+
+### MCP Article Assist Server
+
+The article workflow can be automated via `iasp_tooling/scripts/mcp_article_assist_server.py`.
+It exposes four tools:
+
+- `article_ai_metadata_get`
+- `article_ai_metadata_update`
+- `article_build_markdown`
+- `article_update_and_build`
+
+Metadata update/build arguments include:
+
+- `set_turns`, `inc_turns`
+- `set_fuzzy_min`, `set_fuzzy_max`, `clear_fuzzy`
+- `set_bucket_override`, `clear_bucket_override`
+- `init_defaults`, `ai_disclosure`, `technical_note`
 
 ---
 

@@ -90,7 +90,90 @@ Pick whichever syntax feels natural. The brace form is the canonical one, while 
 
 ------
 
-## 5. Where to Look Next
+## 5. Publishing Articles to Ghost
+
+`iasp_tooling/scripts/ghost_export.py` converts any article Markdown file into a Ghost-ready Markdown file.  Most semantic fenced blocks — note variants, sidebars, callouts, bridges — are converted to inline-styled HTML `<div>` blocks, while epigraphs become Markdown blockquotes.  Include directives are resolved automatically by reading the referenced files.  Footnotes are gathered and appended as a numbered HTML list.
+
+```bash
+# Write to build/ghost/<stem>-ghost.md  (default)
+python3 iasp_tooling/scripts/ghost_export.py articles/my-article.md
+
+# Specify output path
+python3 iasp_tooling/scripts/ghost_export.py articles/my-article.md -o /tmp/my-article.md
+
+# Preview in terminal before writing
+python3 iasp_tooling/scripts/ghost_export.py articles/my-article.md --dry-run
+```
+
+The output file is plain Markdown with HTML blocks pasted in wherever a semantic wrapper appeared.  Copy the contents into Ghost's **Markdown card** (or paste directly into the editor — Ghost renders inline HTML correctly).
+
+If you want the build pipeline to generate this artifact for you, use the new article Markdown target:
+
+```bash
+python3 build_book.py article-md articles/my-article.md
+python3 build_book.py articles-md
+```
+
+### Optional AI disclosure sidecar
+
+For article Markdown exports, you can store AI disclosure metadata in a sidecar
+file next to the article source:
+
+- `articles/My Article.ai.json`
+
+Example:
+
+```json
+{
+  "turns": 12,
+  "turns_fuzzy_min": 10,
+  "turns_fuzzy_max": 18,
+  "turns_bucket_override": "several",
+  "ai_disclosure": "AI Disclosure: This text was generated via {turns_bucket_phrase} across mixed drafting workflows.",
+  "technical_note": "Technical Note: This article was published via a custom automated build pipeline co-engineered with ChatGPT."
+}
+```
+
+Supported placeholders in `ai_disclosure` and `technical_note`:
+
+- `{turns}` / `{turns_exact}`
+- `{turns_fuzzy}`
+- `{turns_display}`
+- `{turns_bucket}`
+- `{turns_bucket_phrase}`
+
+If `turns_bucket_override` is set, it takes precedence over automatic linguistic
+bucketing.
+
+Helper script examples:
+
+```bash
+python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --init-defaults
+python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --inc 2
+python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --set-fuzzy-min 10 --set-fuzzy-max 18
+python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --set-bucket "several"
+python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --clear-bucket
+```
+
+**Supported conversions in the Ghost export:**
+
+| Source block | Ghost output |
+|---|---|
+| `::: note.<variant>` | Styled `<div>` with colour-coded badge/glyph per variant |
+| `::: {.sidebar}` / `::: {.aside}` | Steel-grey sidebar `<div>`; badge suppressed by `.nobadge` |
+| `::: callout` | Blue accent `<div>` with CALLOUT badge |
+| `::: bridge` | Lavender `<div>` with BRIDGE badge |
+| `::: example` | Blue frame `<div>` with EXAMPLE badge |
+| `::: definition` | Green frame `<div>` with DEFINITION badge |
+| `::: epigraph` | Markdown blockquote |
+| `::: {.include path="…"}` | Resolved inline; `.nobadge` on include transfers to outermost block |
+| `::: {.article}` | Wrapper stripped; content passed through |
+
+**Citation refs** (`[@key]`) are rendered as `<cite>[key]</cite>` so they remain visible; replace with actual citations before publishing.
+
+------
+
+## 6. Where to Look Next
 
 - **PANDOC-WORKFLOW.md** – full semantics, Lua filter behavior, build architecture.
 - **docs/Authoring/** – deeper dives on footnotes, appendices, anti-pattern indexes, etc.

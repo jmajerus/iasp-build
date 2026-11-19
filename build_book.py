@@ -20,7 +20,10 @@ Usage:
     python build_book.py chapter path/to/file.md  # build a single Markdown file
     python build_book.py article path/or-slug [output] [--with-bibliography]
         # build a standalone article PDF (bibliography suppressed by default)
+    python build_book.py article-md path/or-slug [output]
+        # build a fully expanded Markdown article for Ghost or similar platforms
     python build_book.py articles   # build every single-source article (incremental)
+    python build_book.py articles-md # build expanded Markdown for every article
 
     python build_book.py quote-playground  # tiny fixture for quote styling
 
@@ -57,6 +60,7 @@ from .lib.background_palettes import select_luma_offset
 from .lib.order_sources import BookOrderData, load_book_order, normalize_path
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
 from .preprocess import config as preprocess_config
+from .scripts.ghost_export import GhostExporter
 
 # Detect repo + tooling roots relative to this module
 TOOLING_ROOT = Path(__file__).resolve().parent
@@ -64,6 +68,7 @@ ROOT = TOOLING_ROOT.parent
 BUILD_DIR = ROOT / "build"
 ANNEX_OUTPUT_DIR = BUILD_DIR / "annexes"
 ARTICLE_OUTPUT_DIR = BUILD_DIR / "articles"
+GHOST_OUTPUT_DIR = BUILD_DIR / "ghost"
 ARTICLES_DIR = ROOT / "articles"
 ARTICLE_SUFFIXES = {".md", ".markdown"}
 
@@ -681,14 +686,28 @@ def list_flat_article_sources() -> list[Path]:
 
     entries = [
         path
-        for path in ARTICLES_DIR.iterdir()
-        if path.is_file() and path.suffix.lower() in ARTICLE_SUFFIXES
+        for path in ARTICLES_DIR.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in ARTICLE_SUFFIXES
+        and path.name.lower() != "readme.md"
     ]
-    return sorted(entries, key=lambda path: path.name.lower())
+    return sorted(entries, key=lambda path: str(path.relative_to(ARTICLES_DIR)).lower())
 
 
 def flat_article_output_path(source_path: Path) -> Path:
-    return ARTICLE_OUTPUT_DIR / f"{slugify_article_basename(source_path.stem)}.pdf"
+    try:
+        rel_parent = source_path.relative_to(ARTICLES_DIR).parent
+    except ValueError:
+        rel_parent = Path(".")
+    return ARTICLE_OUTPUT_DIR / rel_parent / f"{slugify_article_basename(source_path.stem)}.pdf"
+
+
+def flat_article_markdown_output_path(source_path: Path) -> Path:
+    try:
+        rel_parent = source_path.relative_to(ARTICLES_DIR).parent
+    except ValueError:
+        rel_parent = Path(".")
+    return GHOST_OUTPUT_DIR / rel_parent / f"{source_path.stem}-ghost.md"
 
 
 def find_article_source(spec: str) -> Path:
@@ -2381,12 +2400,6 @@ def build_article_pdf(
 
     article_slug, article_layout = detect_article_slug(resolved)
 
-    if article_layout == "nested":
-        print(
-            "!! Multi-file content under 'articles/' must be promoted to an annex before building."
-        )
-        sys.exit(1)
-
     hint_path: Path | None = None
     if output_hint:
         hint_path = Path(output_hint).expanduser()
@@ -2407,7 +2420,7 @@ def build_article_pdf(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n== Building standalone article: {resolved}")
+    print(f"\n[PDF] Building: {resolved.name}")
     verify_citations([str(resolved)])
 
     cmd = [
@@ -2465,6 +2478,42 @@ def build_article_pdf(
     optimize_pdf(pdf_out)
 
 
+def build_article_markdown(
+    input_path: Path,
+    output_hint: str | None = None,
+) -> None:
+    """Render a standalone Markdown article into a fully expanded Markdown file."""
+
+    ensure_build_dir()
+
+    resolved = input_path if input_path.is_absolute() else (ROOT / input_path).resolve()
+
+    if not resolved.exists():
+        print(f"!! Article source not found: {resolved}")
+        sys.exit(1)
+
+    hint_path: Path | None = None
+    if output_hint:
+        hint_path = Path(output_hint).expanduser()
+        if not hint_path.is_absolute():
+            hint_path = (ROOT / hint_path).resolve()
+
+    if hint_path and hint_path.suffix.lower() in {".md", ".markdown"}:
+        md_out = hint_path
+    elif hint_path:
+        md_out = hint_path / f"{resolved.stem}-ghost.md"
+    else:
+        md_out = flat_article_markdown_output_path(resolved)
+
+    md_out.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n[MD] Building: {resolved.name}")
+    verify_citations([str(resolved)])
+
+    exporter = GhostExporter(ROOT)
+    exporter.export(resolved, md_out)
+
+
 def build_all_articles(use_filter: bool = True) -> None:
     sources = list_flat_article_sources()
 
@@ -2474,8 +2523,11 @@ def build_all_articles(use_filter: bool = True) -> None:
 
     ensure_build_dir()
     ARTICLE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    GHOST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     built = skipped = 0
+
+    exporter = GhostExporter(ROOT)
 
     for source in sources:
         output_path = flat_article_output_path(source)
@@ -2492,11 +2544,56 @@ def build_all_articles(use_filter: bool = True) -> None:
             skipped += 1
             continue
 
-        print(f"\n-- Building article {source.name}")
-        build_article_pdf(source, use_filter=use_filter)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        build_article_pdf(source, output_hint=str(output_path), use_filter=use_filter)
+
+        rel_parent = source.relative_to(ARTICLES_DIR).parent
+        ghost_path = GHOST_OUTPUT_DIR / rel_parent / f"{source.stem}-ghost.md"
+        ghost_path.parent.mkdir(parents=True, exist_ok=True)
+        ghost_md = exporter._process_file(source)
+        ghost_path.write_text(ghost_md, encoding="utf-8")
+        print(f"   [Ghost] ✓ {ghost_path.name}")
+
         built += 1
 
     print(f"\n== Articles build complete ({built} built, {skipped} skipped) ==")
+
+
+def build_all_articles_markdown() -> None:
+    sources = list_flat_article_sources()
+
+    if not sources:
+        print(f"-- No single-source articles found in {ARTICLES_DIR}")
+        return
+
+    ensure_build_dir()
+    GHOST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    built = skipped = 0
+    exporter = GhostExporter(ROOT)
+
+    for source in sources:
+        output_path = flat_article_markdown_output_path(source)
+
+        needs_build = True
+        if output_path.exists():
+            try:
+                needs_build = output_path.stat().st_mtime < source.stat().st_mtime
+            except OSError:
+                needs_build = True
+
+        if not needs_build:
+            print(f"-- Skipping {source.name} (up to date)")
+            skipped += 1
+            continue
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"\n[MD] Building: {source.name}")
+        verify_citations([str(source)])
+        exporter.export(source, output_path)
+        built += 1
+
+    print(f"\n== Markdown article build complete ({built} built, {skipped} skipped) ==")
 
 
 def build_single_markdown(
@@ -2721,8 +2818,20 @@ def main() -> None:
             use_filter=True,
             keep_bibliography=keep_bibliography,
         )
+    elif target == "article-md":
+        if not extra:
+            print("The 'article-md' target requires a Markdown path or slug.")
+            sys.exit(1)
+        article_path = find_article_source(extra[0])
+        output_hint = extra[1] if len(extra) > 1 else None
+        if len(extra) > 2:
+            print("Too many positional arguments for 'article-md'.")
+            sys.exit(1)
+        action = lambda: build_article_markdown(article_path, output_hint)
     elif target == "articles":
         action = lambda: build_all_articles(use_filter=True)
+    elif target == "articles-md":
+        action = build_all_articles_markdown
     elif target == "pdf-chapters":
         action = lambda: build_all_chapters(use_filter=True, pdfmode="screen")
     elif target == "draft-pdf-chapters":

@@ -51,6 +51,7 @@ iasp_tooling/
 | Document | Purpose |
 |----------|---------|
 | [Technical/Structured Data](Technical/STRUCTURED_DATA_TECHNICAL.md) | JSON-LD schema for catalog/metadata feeds |
+| [vocab/iasp.ttl](../vocab/iasp.ttl) | IASP vocabulary as a SKOS concept scheme (importable into terminology-mcp) |
 
 ---
 
@@ -61,6 +62,7 @@ iasp_tooling/
 - `book-order.txt` — Canonical document ordering
 - `metadata.yaml` — Publication metadata (title, author, version)
 - `preprocessor/README.md` — Catalog preprocessor deep-dive
+- `articles/README.md` — Article pipeline details, Ghost Markdown export, AI disclosure sidecar schema
 
 ---
 
