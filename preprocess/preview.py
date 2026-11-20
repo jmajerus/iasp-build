@@ -9,12 +9,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import TOOLING_ROOT, project_root
+
+PROJECT_ROOT = project_root()
 
 from iasp_tooling.preprocess import config as preprocess_config
-FILTER = PROJECT_ROOT / "iasp_tooling" / "lua" / "catalog_collections.lua"
+FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
 DEFAULT_CONFIG = preprocess_config.resolve_config_path()
 
 try:

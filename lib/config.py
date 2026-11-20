@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from ..paths import project_root
+
+PROJECT_ROOT = project_root()
 CONFIG_FILENAME = "iasp-config.yaml"
 CONFIG_ENV_VAR = "IASP_CONFIG_PATH"
 

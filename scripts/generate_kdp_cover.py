@@ -21,14 +21,13 @@ import sys
 import argparse
 from typing import Literal
 
-# Add repo root to path for IASP imports
-# Script is at: repo/iasp_tooling/scripts/generate_kdp_cover.py
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from iasp_tooling.lib.config import load_config
+from iasp_tooling.paths import project_root
 
-ROOT = REPO_ROOT
+ROOT = project_root()
 
 
 # KDP spine width calculations (in inches)

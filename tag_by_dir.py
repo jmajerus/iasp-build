@@ -25,8 +25,12 @@ import tempfile
 import sys
 import re
 
-TOOLING_ROOT = Path(__file__).resolve().parent
-ROOT = TOOLING_ROOT.parent
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from iasp_tooling.paths import project_root
+
+ROOT = project_root()
 
 # -------- CONFIG -----------------------------------------------------------
 

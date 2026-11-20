@@ -29,9 +29,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import TOOLING_ROOT, project_root
+
+ROOT = project_root()
 
 from iasp_tooling.lib import config as iasp_config
 from iasp_tooling.lib.order_sources import normalize_path
@@ -46,9 +49,9 @@ DEFAULT_TOC_OUTPUT = "front matter/FRONT MATTER - Table of Contents.md"
 TOC_OUTPUT_PATH = None
 TOC_PATH = None
 PART_META_PATH = ROOT / "parts_meta.json"
-TAGGER = ROOT / "tag_by_dir.py"
+TAGGER = TOOLING_ROOT / "tag_by_dir.py"
 PANDOC_MARKDOWN_FORMAT = "markdown+fenced_divs+header_attributes+link_attributes+smart"
-TOC_LUA_FILTER = ROOT / "iasp_tooling" / "lua" / "iasp-toc.lua"
+TOC_LUA_FILTER = TOOLING_ROOT / "lua" / "iasp-toc.lua"
 
 EPIGRAPH_TYPES = {"epigraph", "epigraph-inline"}
 

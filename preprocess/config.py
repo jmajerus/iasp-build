@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from ..lib import config as iasp_config
+from ..paths import project_root
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = project_root()
 DEFAULT_CONFIG = PROJECT_ROOT / "preprocessor" / "preprocess.yaml"
 
 

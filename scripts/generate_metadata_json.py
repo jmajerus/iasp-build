@@ -15,7 +15,12 @@ except ImportError as exc:  # pragma: no cover - defensive guard for missing dep
 else:
     YAML_IMPORT_ERROR = None
 
-ROOT = Path(__file__).resolve().parents[2]
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import project_root
+
+ROOT = project_root()
 METADATA_YAML = ROOT / "metadata.yaml"
 METADATA_JSON = ROOT / "metadata.json"
 

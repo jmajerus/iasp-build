@@ -11,9 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import project_root
+
+ROOT = project_root()
 
 from iasp_tooling.lib import config as iasp_config
 from iasp_tooling.lib.order_sources import BookOrderData, load_book_order, normalize_path

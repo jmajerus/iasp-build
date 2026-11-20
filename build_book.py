@@ -59,12 +59,11 @@ from .lib import layout_overrides, vscode_tasks
 from .lib.background_palettes import select_luma_offset
 from .lib.order_sources import BookOrderData, load_book_order, normalize_path
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
+from .paths import TOOLING_ROOT, project_root
 from .preprocess import config as preprocess_config
 from .scripts.ghost_export import GhostExporter
 
-# Detect repo + tooling roots relative to this module
-TOOLING_ROOT = Path(__file__).resolve().parent
-ROOT = TOOLING_ROOT.parent
+ROOT = project_root()
 BUILD_DIR = ROOT / "build"
 ANNEX_OUTPUT_DIR = BUILD_DIR / "annexes"
 ARTICLE_OUTPUT_DIR = BUILD_DIR / "articles"
@@ -408,14 +407,17 @@ def _report_missing_citations_from_stderr(stderr: str) -> None:
 def run(cmd: list[str]) -> None:
     print("\n>> Running:", " ".join(str(c) for c in cmd))
     if cmd and cmd[0] == "pandoc":
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        env = os.environ.copy()
+        # The LaTeX header includes partials relative to the tooling package.
+        env["TEXINPUTS"] = str(TOOLING_ROOT.parent) + os.pathsep + env.get("TEXINPUTS", "")
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, env=env)
         if result.stdout:
             print(result.stdout, end="")
         if result.stderr:
             print(result.stderr, end="", file=sys.stderr)
         _report_missing_citations_from_stderr(result.stderr or "")
     else:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:
         print(f"\n!! Command failed with exit code {result.returncode}")
         sys.exit(result.returncode)
@@ -595,9 +597,9 @@ def run_generate_toc() -> None:
     if not TOC_GENERATOR.exists():
         print("-- generate_toc.py not found; skipping TOC generation.")
         return
-        if not TOC_ENABLED:
-            print("-- TOC generation disabled via config; skipping generate_toc.py")
-            return
+    if not TOC_ENABLED:
+        print("-- TOC generation disabled via config; skipping generate_toc.py")
+        return
 
     print("\n== Regenerating front-matter Table of Contents (generate_toc.py) ==")
     run([sys.executable, str(TOC_GENERATOR)])
@@ -711,7 +713,7 @@ def flat_article_markdown_output_path(source_path: Path) -> Path:
 
 
 def find_article_source(spec: str) -> Path:
-    candidate_path = Path(spec)
+    candidate_path = ROOT / spec
     if candidate_path.exists():
         return candidate_path.resolve()
 
@@ -2723,8 +2725,8 @@ def determine_build_stage(target: str) -> str:
     return "final"
 
 
-def main() -> None:
-    raw_args = sys.argv[1:]
+def main(argv: list[str] | None = None) -> None:
+    raw_args = sys.argv[1:] if argv is None else argv
     cli_profile, args = _extract_profile_arg(raw_args)
 
     env_profile = os.environ.get("BUILD_PROFILE", "").strip() or None
@@ -2744,7 +2746,7 @@ def main() -> None:
 
     # pdf-check is read-only: bypass the build pipeline entirely
     if target == "pdf-check":
-        pdf_arg = Path(extra[0]) if extra else None
+        pdf_arg = ROOT / extra[0] if extra else None
         passed = check_print_pdf(pdf_arg)
         sys.exit(0 if passed else 1)
 
@@ -2838,9 +2840,8 @@ def main() -> None:
         action = lambda: build_all_chapters(use_filter=True, pdfmode="screen")
     elif target == "kdp-cover":
         # Generate KDP print cover from configuration
-        import subprocess
-        script_path = ROOT / "iasp_tooling" / "scripts" / "generate_kdp_cover.py"
-        action = lambda: subprocess.run([sys.executable, str(script_path)], check=True)
+        script_path = TOOLING_ROOT / "scripts" / "generate_kdp_cover.py"
+        action = lambda: run([sys.executable, str(script_path)])
     else:
         print(f"Unknown target: {target}")
         print(

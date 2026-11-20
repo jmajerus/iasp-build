@@ -11,10 +11,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import TOOLING_ROOT, project_root
+
+PROJECT_ROOT = project_root()
 DEFAULT_INPUT = None
 DEFAULT_CONFIG = PROJECT_ROOT / "preprocessor" / "preprocess.yaml"
-DEFAULT_FILTER = PROJECT_ROOT / "iasp_tooling" / "lua" / "catalog_collections.lua"
+DEFAULT_FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
 OUTPUT_DIR = PROJECT_ROOT / ".build"
 STAMP_DIR = PROJECT_ROOT / ".build" / "preprocess-stamps"
 

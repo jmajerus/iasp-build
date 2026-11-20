@@ -17,6 +17,23 @@ This guide covers the Python scripts, VS Code tasks, build profiles, and output 
 
 Draft variants (`draft-epub`, `draft-pdf`, `draft-all`) show `.draft` blocks and hide `.final` blocks.
 
+### Build a manuscript in a separate directory
+
+With `iasp_tooling` on the Python import path, run the CLI against a
+manuscript directory:
+
+```bash
+python3 -m iasp_tooling.cli --project-root /path/to/manuscript epub
+```
+
+The CLI defaults to the current directory. The repository's `build_book.py`
+wrapper defaults to the checkout that contains it. The builder reads project
+files such as `iasp-config.yaml`, `book-order.txt`, and `metadata.yaml` from
+the selected manuscript directory and writes results to its `build/`
+directory. Lua filters, LaTeX headers, and stylesheets come from the tooling
+package. For a manuscript without a generated table of contents, set
+`toc.enabled: false` in `iasp-config.yaml`.
+
 ---
 
 ## KDP Print Optimization: Intelligent Margin Calculation

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Dict, List
 
+from ..paths import project_root
 from . import config as iasp_config
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = project_root()
 VSCODE_DIR = ROOT / ".vscode"
 TASKS_PATH = VSCODE_DIR / "tasks.json"
 WORKSPACE_VAR = "${workspaceFolder}"
