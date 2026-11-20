@@ -27,7 +27,11 @@ end
 
 local FILTER_DIR = script_directory()
 local TOOLING_ROOT = normalize_path(pandoc.path.join({FILTER_DIR, ".."}))
-local PROJECT_ROOT = normalize_path(pandoc.path.join({TOOLING_ROOT, ".."}))
+local PROJECT_ROOT = os.getenv("IASP_PROJECT_ROOT")
+if not PROJECT_ROOT or PROJECT_ROOT == "" then
+  PROJECT_ROOT = pandoc.path.join({TOOLING_ROOT, ".."})
+end
+PROJECT_ROOT = normalize_path(PROJECT_ROOT)
 
 local state = {
   loaded = false,

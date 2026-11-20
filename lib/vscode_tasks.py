@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from ..paths import project_root
+from ..paths import TOOLING_ROOT, project_root
 from . import config as iasp_config
 
 ROOT = project_root()
@@ -226,6 +226,9 @@ def _build_payload(settings: dict[str, Any]) -> Dict[str, Any] | None:
 
 
 def sync() -> None:
+    if ROOT != TOOLING_ROOT.parent or not (ROOT / "build_book.py").is_file():
+        return
+
     settings = _section()
     payload = _build_payload(settings)
     if payload is None:

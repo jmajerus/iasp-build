@@ -59,7 +59,7 @@ from .lib import layout_overrides, vscode_tasks
 from .lib.background_palettes import select_luma_offset
 from .lib.order_sources import BookOrderData, load_book_order, normalize_path
 from .lib.container_walker import flatten_nodes, walk_order_entries, write_wrapper_metadata
-from .paths import TOOLING_ROOT, project_root
+from .paths import TOOLING_ROOT, project_environment, project_root
 from .preprocess import config as preprocess_config
 from .scripts.ghost_export import GhostExporter
 
@@ -407,7 +407,7 @@ def _report_missing_citations_from_stderr(stderr: str) -> None:
 def run(cmd: list[str]) -> None:
     print("\n>> Running:", " ".join(str(c) for c in cmd))
     if cmd and cmd[0] == "pandoc":
-        env = os.environ.copy()
+        env = project_environment(ROOT)
         # The LaTeX header includes partials relative to the tooling package.
         env["TEXINPUTS"] = str(TOOLING_ROOT.parent) + os.pathsep + env.get("TEXINPUTS", "")
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, env=env)

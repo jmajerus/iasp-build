@@ -12,7 +12,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from iasp_tooling.paths import TOOLING_ROOT, project_root
+from iasp_tooling.paths import TOOLING_ROOT, project_environment, project_root
 
 PROJECT_ROOT = project_root()
 
@@ -91,6 +91,7 @@ def render_catalog(slots: list[str], config_path: Path) -> str:
             input=markdown.encode("utf-8"),
             capture_output=True,
             cwd=PROJECT_ROOT,
+            env=project_environment(PROJECT_ROOT),
         )
     finally:
         meta_file_path.unlink(missing_ok=True)

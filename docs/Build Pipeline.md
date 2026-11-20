@@ -34,6 +34,9 @@ directory. Lua filters, LaTeX headers, and stylesheets come from the tooling
 package. For a manuscript without a generated table of contents, set
 `toc.enabled: false` in `iasp-config.yaml`.
 
+Automatic VS Code task generation applies to this tooling checkout. External
+manuscripts can define their own tasks using the CLI above.
+
 ---
 
 ## KDP Print Optimization: Intelligent Margin Calculation

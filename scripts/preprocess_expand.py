@@ -14,7 +14,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from iasp_tooling.paths import TOOLING_ROOT, project_root
+from iasp_tooling.paths import TOOLING_ROOT, project_environment, project_root
 
 PROJECT_ROOT = project_root()
 
@@ -58,7 +58,7 @@ def run_pandoc(input_path: Path, output_path: Path, config_path: Path, filter_pa
     ]
     if config_path != DEFAULT_CONFIG:
         cmd.extend(["-M", f"catalog_collections.config={config_path}"])
-    subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+    subprocess.run(cmd, check=True, cwd=PROJECT_ROOT, env=project_environment(PROJECT_ROOT))
 
 
 def build_parser() -> argparse.ArgumentParser:
