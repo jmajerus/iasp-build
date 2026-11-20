@@ -271,22 +271,9 @@ Template placeholders available during export:
 When `turns_bucket_override` is present, it is used for `{turns_bucket}` and
 `{turns_bucket_phrase}` instead of automatic bucketing.
 
-### MCP Article Assist Server
-
-The article workflow can be automated via `iasp_tooling/scripts/mcp_article_assist_server.py`.
-It exposes four tools:
-
-- `article_ai_metadata_get`
-- `article_ai_metadata_update`
-- `article_build_markdown`
-- `article_update_and_build`
-
-Metadata update/build arguments include:
-
-- `set_turns`, `inc_turns`
-- `set_fuzzy_min`, `set_fuzzy_max`, `clear_fuzzy`
-- `set_bucket_override`, `clear_bucket_override`
-- `init_defaults`, `ai_disclosure`, `technical_note`
+Use `update_ai_turns.py` to edit article disclosure metadata and the
+`article-md` target to export an article. The draft Article Assist MCP server
+is disabled in the workspace configuration.
 
 ---
 

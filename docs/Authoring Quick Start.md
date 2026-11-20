@@ -92,7 +92,7 @@ Pick whichever syntax feels natural. The brace form is the canonical one, while 
 
 ## 5. Publishing Articles to Ghost
 
-`iasp_tooling/scripts/ghost_export.py` converts any article Markdown file into a Ghost-ready Markdown file.  Most semantic fenced blocks — note variants, sidebars, callouts, bridges — are converted to inline-styled HTML `<div>` blocks, while epigraphs become Markdown blockquotes.  Include directives are resolved automatically by reading the referenced files.  Footnotes are gathered and appended as a numbered HTML list.
+`iasp_tooling/scripts/ghost_export.py` converts article Markdown into Markdown for Ghost. Most semantic fenced blocks — note variants, sidebars, callouts, bridges — are converted to inline-styled HTML `<div>` blocks, while epigraphs become Markdown blockquotes. Include directives are resolved by reading the referenced files. Footnote references and definitions retain their Markdown syntax.
 
 ```bash
 # Write to build/ghost/<stem>-ghost.md  (default)
@@ -169,7 +169,7 @@ python3 iasp_tooling/scripts/update_ai_turns.py "articles/my-article.md" --clear
 | `::: {.include path="…"}` | Resolved inline; `.nobadge` on include transfers to outermost block |
 | `::: {.article}` | Wrapper stripped; content passed through |
 
-**Citation refs** (`[@key]`) are rendered as `<cite>[key]</cite>` so they remain visible; replace with actual citations before publishing.
+Pandoc citation references such as `[@key]` pass through as written. Replace them with reader-facing citations before publishing.
 
 ------
 

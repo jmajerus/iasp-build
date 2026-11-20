@@ -44,13 +44,13 @@ def _resolve_article(path_or_slug: str) -> Path:
 
 
 def _load_json(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except FileNotFoundError:
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        raise ValueError("expected a JSON object")
+    return data
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,7 +79,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     sidecar = article.with_suffix(".ai.json")
-    payload = _load_json(sidecar)
+    try:
+        payload = _load_json(sidecar)
+    except (OSError, ValueError) as exc:
+        print(f"Cannot update {sidecar}: {exc}", file=sys.stderr)
+        return 1
 
     turns_raw = payload.get("turns", 0)
     try:
