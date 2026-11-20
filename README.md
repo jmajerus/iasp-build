@@ -43,4 +43,19 @@ From elsewhere, pass `--project-root /path/to/manuscript`. A minimal manuscript 
 
 See the [pipeline guide](docs/Build%20Pipeline.md) and [semantic vocabulary](docs/Semantic%20Vocabulary.md) for details. Some examples use files from the original manuscript checkout.
 
+## Build the technical annex
+
+The IASP Framework Technical Annex bundles the version of the documentation
+in this checkout. From the repository root with `iasp-build` installed, run:
+
+```sh
+iasp-build --project-root docs --profile iasp-framework epub
+iasp-build --project-root docs --profile iasp-framework pdf-screen
+```
+
+Use the same command with `docx` for a Word edition. The files are written
+to `docs/build/annexes/`.
+
+## Tests
+
 To run the tests, install the `test` extra and run `python3 -m pytest`. The detached-manuscript integration test uses Pandoc.

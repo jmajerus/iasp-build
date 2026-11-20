@@ -2,6 +2,9 @@
 
 This directory contains documentation for the **Informative Authoring Semantics Profile (IASP)** framework and its Pandoc-based build pipeline. These docs are intended for developers and collaborators working on the authoring environment itself—not for prose authoring guidance.
 
+
+The [technical annex](annex/IASP%20Framework%20Technical%20Annex.md) bundles these guides into one document. See [build commands](../README.md#build-the-technical-annex) for the EPUB, PDF, and Word editions.
+
 ---
 
 ## Quick Reference

@@ -1,0 +1,15 @@
+author:
+  - "John Majerus"
+
+title: "IASP Framework Technical Annex"
+subtitle: "Semantic Vocabulary and Pandoc Build Pipeline Documentation"
+
+language: "en-US"
+rights: "© 2025–2026 John Majerus. All rights reserved."
+publisher: "Independent"
+
+description: >
+  Complete technical documentation for the Informative Authoring Semantics
+  Profile (IASP) framework, including the semantic vocabulary, Pandoc build
+  pipeline, Lua filters, LaTeX styling, and configuration reference.
+bibliography: []
