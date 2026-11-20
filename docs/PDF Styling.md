@@ -144,3 +144,9 @@ The mode is passed via `pdfmode` metadata and controls geometry, headers, and li
 | `iasp_tooling/latex/pdf-header.tex` | Main XeLaTeX preamble |
 | `iasp_tooling/latex/box-*.tex` | Individual environment definitions |
 | `build/pdf-layout-overrides.tex` | Generated per-build overrides |
+
+### Long bridges
+
+Add the `.unframed` class to a `.bridge` wrapper when a long bridge needs to
+flow across PDF pages. The bridge keeps its semantic role in EPUB, and
+`.pre-pagebreak` and `.post-pagebreak` still apply.

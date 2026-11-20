@@ -1601,7 +1601,10 @@ local function handle_div(div)
   end
 
   if has_epub_type(div.attributes, "bridge") then
-    local blocks = wrap_in_env(div, "bridgeheadblock")
+    local blocks = div.content
+    if not has_class(div, "unframed") then
+      blocks = wrap_in_env(div, "bridgeheadblock")
+    end
     return apply_pagebreak_wrappers(blocks, wants_pre_pagebreak, wants_post_pagebreak, format_hint)
   end
 
