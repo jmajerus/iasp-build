@@ -143,6 +143,10 @@ For most manuscripts, there are 1-2 stable solutions. We choose the most conserv
 
 ## VS Code Tasks
 
+Set `tasks.use_workspace_venv: true` in `iasp-config.yaml` to have generated
+tasks run the manuscript’s `.venv` interpreter directly. Install
+`iasp-build` in that environment before running a task.
+
 All build commands are wrapped in `.vscode/tasks.json`:
 
 | Task | Target | Notes |

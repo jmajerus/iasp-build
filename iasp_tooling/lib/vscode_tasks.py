@@ -218,6 +218,12 @@ def _build_payload(settings: dict[str, Any]) -> Dict[str, Any] | None:
 
     _ensure_default(tasks)
 
+    if _bool(settings.get("use_workspace_venv"), False):
+        for task in tasks:
+            task["type"] = "process"
+            task["command"] = f"{WORKSPACE_VAR}/.venv/bin/python"
+            task["windows"] = {"command": rf"{WORKSPACE_VAR}\.venv\Scripts\python.exe"}
+
     return {
         "version": "2.0.0",
         "tasks": tasks,
