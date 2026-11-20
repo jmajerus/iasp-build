@@ -103,17 +103,17 @@ CHAPTER_OUTPUT_DIR = BUILD_DIR / "chapters"
 CONTAINER_WRAPPERS_JSON = BUILD_DIR / "container-wrappers.json"
 PRE_BUILD_HOOKS_DIR = ROOT / "scripts" / "pre_build_hooks"
 
-EPUB_OUT = BUILD_DIR / "The-Struggle-Against-Dehumanization.epub"
-PDF_OUT_SCREEN = BUILD_DIR / "The-Struggle-Against-Dehumanization.pdf"
-PDF_OUT_PRINT  = BUILD_DIR / "The-Struggle-Against-Dehumanization-print.pdf"
-DOCX_OUT = BUILD_DIR / "The-Struggle-Against-Dehumanization.docx"
-RTF_OUT = BUILD_DIR / "The-Struggle-Against-Dehumanization.rtf"
+DEFAULT_OUTPUT_BASENAME = "manuscript"
+
+EPUB_OUT = BUILD_DIR / f"{DEFAULT_OUTPUT_BASENAME}.epub"
+PDF_OUT_SCREEN = BUILD_DIR / f"{DEFAULT_OUTPUT_BASENAME}.pdf"
+PDF_OUT_PRINT  = BUILD_DIR / f"{DEFAULT_OUTPUT_BASENAME}-print.pdf"
+DOCX_OUT = BUILD_DIR / f"{DEFAULT_OUTPUT_BASENAME}.docx"
+RTF_OUT = BUILD_DIR / f"{DEFAULT_OUTPUT_BASENAME}.rtf"
 QUOTE_PLAYGROUND_PDF = BUILD_DIR / "quote-playground.pdf"
 QUOTE_PLAYGROUND_TEX = BUILD_DIR / "quote-playground.tex"
 EPUBCHECK_PROFILE = "EPUB_3.3"
 PDF_PAGE_COUNT_CACHE = BUILD_DIR / "pdf-page-counts.json"
-
-DEFAULT_OUTPUT_BASENAME = "The-Struggle-Against-Dehumanization"
 
 PANDOC_MARKDOWN_INPUT = "markdown+fancy_lists+fenced_divs+header_attributes+link_attributes+smart"
 

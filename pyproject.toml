@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iasp-build"
+version = "0.1.0"
+description = "Pandoc-based build tools for manuscripts using the Informative Authoring Semantics Profile"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE.md"}
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+kdp = ["Pillow>=9"]
+test = ["pytest>=7"]
+
+[project.scripts]
+iasp-build = "iasp_tooling.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["iasp_tooling", "iasp_tooling.*"]
+
+[tool.setuptools.package-data]
+iasp_tooling = ["lua/*.lua", "lua/iasp/*.lua", "latex/*.tex", "styles/*.css", "vocab/*.ttl"]

@@ -8,7 +8,7 @@ PROJECT_ROOT_ENV = "IASP_PROJECT_ROOT"
 
 
 def project_root() -> Path:
-    return Path(os.environ.get(PROJECT_ROOT_ENV) or TOOLING_ROOT.parent).expanduser().resolve()
+    return Path(os.environ.get(PROJECT_ROOT_ENV) or Path.cwd()).expanduser().resolve()
 
 
 def project_environment(root: Path) -> dict[str, str]:

@@ -23,12 +23,11 @@ This directory contains documentation for the **Informative Authoring Semantics 
 
 ```
 iasp_tooling/
-├── docs/              ← You are here
 ├── latex/             ← XeLaTeX preamble and box-*.tex environments
 ├── lib/               ← Python library modules (config, order_sources, etc.)
 ├── lua/               ← Pandoc Lua filters (iasp-semantics.lua, etc.)
 ├── preprocess/        ← Catalog/slot preprocessor (preview.py, expand.py)
-├── scripts/           ← Build automation (generate_toc.py, sync_builds_to_drive.py, etc.)
+├── scripts/           ← Build automation (generate_toc.py, generate_metadata_json.py, etc.)
 └── styles/            ← CSS for EPUB/HTML output
 ```
 
@@ -40,7 +39,7 @@ iasp_tooling/
 
 2. **Pandoc Filters** — The Lua filters translate IASP classes into `epub:type`, ARIA roles, and LaTeX environments during the build.
 
-3. **Build Pipeline** — Python scripts orchestrate Pandoc, manage metadata, generate TOCs, and sync outputs to Google Drive.
+3. **Build Pipeline** — Python scripts orchestrate Pandoc, manage metadata, and generate TOCs.
 
 4. **Output Formats** — EPUB, PDF (screen/print), DOCX, RTF, and standalone articles.
 
@@ -51,11 +50,11 @@ iasp_tooling/
 | Document | Purpose |
 |----------|---------|
 | [Technical/Structured Data](Technical/STRUCTURED_DATA_TECHNICAL.md) | JSON-LD schema for catalog/metadata feeds |
-| [vocab/iasp.ttl](../vocab/iasp.ttl) | IASP vocabulary as a SKOS concept scheme (importable into terminology-mcp) |
+| [vocab/iasp.ttl](../iasp_tooling/vocab/iasp.ttl) | IASP vocabulary as a SKOS concept scheme (importable into terminology-mcp) |
 
 ---
 
-## Related Files (Outside This Directory)
+## Files in a manuscript project
 
 - `iasp-config.yaml` — Central configuration for layout, TOC, annexes, Drive sync
 - `build-profiles.json` — Named build profiles (default, annexes, test)
@@ -63,13 +62,3 @@ iasp_tooling/
 - `metadata.yaml` — Publication metadata (title, author, version)
 - `preprocessor/README.md` — Catalog preprocessor deep-dive
 - `articles/README.md` — Article pipeline details, Ghost Markdown export, AI disclosure sidecar schema
-
----
-
-## For Prose Authoring
-
-If you're looking for guidance on writing the manuscript itself (not the build pipeline), see the `docs/` directory at the project root, which contains:
-
-- Authoring style guides
-- Pattern language vocabulary
-- Manuscript-specific notes and frameworks

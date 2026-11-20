@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from ..paths import TOOLING_ROOT, project_root
+from ..paths import project_root
 from . import config as iasp_config
 
 ROOT = project_root()
@@ -136,7 +136,7 @@ def _build_tasks_from_bundles(entries: list[Any], default_claimed: bool) -> tupl
 
 def _auxiliary_tasks(aux: dict[str, Any]) -> List[Dict[str, Any]]:
     tasks: List[Dict[str, Any]] = []
-    if _bool(aux.get("drive_sync"), True):
+    if _bool(aux.get("drive_sync"), True) and (ROOT / "scripts" / "sync_builds_to_drive.py").is_file():
         tasks.append(
             _task_base(
                 label="Drive sync (latest build)",
@@ -150,7 +150,7 @@ def _auxiliary_tasks(aux: dict[str, Any]) -> List[Dict[str, Any]]:
                 args=[BUILD_SCRIPT, "articles"],
             )
         )
-    if _bool(aux.get("prepare_patch"), True):
+    if _bool(aux.get("prepare_patch"), True) and (ROOT / "scripts" / "bump_patch_version.py").is_file():
         tasks.append(
             _task_base(
                 label="Prepare next patch version",
@@ -158,7 +158,7 @@ def _auxiliary_tasks(aux: dict[str, Any]) -> List[Dict[str, Any]]:
                 use_env=False,
             )
         )
-    if _bool(aux.get("toggle_profile"), True):
+    if _bool(aux.get("toggle_profile"), True) and (ROOT / "scripts" / "toggle_build_profile.py").is_file():
         tasks.append(
             _task_base(
                 label="Toggle Build Profile",
@@ -226,7 +226,7 @@ def _build_payload(settings: dict[str, Any]) -> Dict[str, Any] | None:
 
 
 def sync() -> None:
-    if ROOT != TOOLING_ROOT.parent or not (ROOT / "build_book.py").is_file():
+    if not (ROOT / "build_book.py").is_file():
         return
 
     settings = _section()

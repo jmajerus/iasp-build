@@ -20,7 +20,12 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import project_root
+
+ROOT = project_root()
 
 
 def _resolve_article(path_or_slug: str) -> Path:

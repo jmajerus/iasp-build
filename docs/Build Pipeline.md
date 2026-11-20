@@ -23,7 +23,7 @@ With `iasp_tooling` on the Python import path, run the CLI against a
 manuscript directory:
 
 ```bash
-python3 -m iasp_tooling.cli --project-root /path/to/manuscript epub
+iasp-build --project-root /path/to/manuscript epub
 ```
 
 The CLI defaults to the current directory. The repository's `build_book.py`
@@ -34,8 +34,9 @@ directory. Lua filters, LaTeX headers, and stylesheets come from the tooling
 package. For a manuscript without a generated table of contents, set
 `toc.enabled: false` in `iasp-config.yaml`.
 
-Automatic VS Code task generation applies to this tooling checkout. External
-manuscripts can define their own tasks using the CLI above.
+Automatic VS Code task generation applies to manuscripts with a compatible
+`build_book.py` wrapper. Other projects can define their own tasks using the
+CLI above.
 
 ---
 
@@ -208,7 +209,7 @@ Generates Table of Contents from `book-order.txt`:
 
 Converts `metadata.yaml` → `metadata.json` for Lua filters.
 
-### `iasp_tooling/scripts/sync_builds_to_drive.py`
+### `scripts/sync_builds_to_drive.py` in the original manuscript
 
 Syncs artifacts to Google Drive:
 - Copies EPUB/PDF/DOCX/RTF to mounted folder
@@ -216,7 +217,7 @@ Syncs artifacts to Google Drive:
 - Auto-bumps patch version after successful sync
 - Flags: `--skip-missing`, `--no-version-bump`
 
-### `iasp_tooling/scripts/bump_patch_version.py`
+### `scripts/bump_patch_version.py` in the original manuscript
 
 Increments patch version in `metadata.yaml` (e.g., `0.3.3` → `0.3.4`).
 
@@ -292,8 +293,7 @@ When `turns_bucket_override` is present, it is used for `{turns_bucket}` and
 `{turns_bucket_phrase}` instead of automatic bucketing.
 
 Use `update_ai_turns.py` to edit article disclosure metadata and the
-`article-md` target to export an article. The draft Article Assist MCP server
-is disabled in the workspace configuration.
+`article-md` target to export an article. The external `iasp-mcp` service provides authoring tools.
 
 ---
 

@@ -28,7 +28,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Union
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from iasp_tooling.paths import project_root
+
+PROJECT_ROOT = project_root()
 WORKS_CITED_HEADING_RE = re.compile(r"^\s*##+\s+Works Cited\b", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
