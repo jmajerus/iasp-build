@@ -247,6 +247,10 @@ This is useful for:
 - Case study collections where each case has the same internal template
 - Documents where the subtitle is descriptive but not needed in the TOC
 
+### Profile-Conditional Headings
+
+`generate_toc.py` is run with the active build profile (`build_book.py` passes `--profile`; run by hand, it falls back to `$BUILD_PROFILE`, then `default`). Headings inside `.profile-only` / `.standalone-only` blocks hidden for that profile are left out of every TOC written during the run: the front-matter TOC and the annex TOCs (`annexN-toc.md`). Each build regenerates these files, so a main-book build drops headings that only an annex build shows. See *Build Pipeline → Profile-Conditional Content* for the markup.
+
 ### Block Heading Prefixes
 
 For headings inside sidebars or notes:

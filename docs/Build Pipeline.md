@@ -191,6 +191,62 @@ All build commands are wrapped in `.vscode/tasks.json`:
 
 Profile state is stored in `.vscode/current-profile.json`.
 
+The active profile name is written to `build/build-metadata.json` as `build-profile`. The profile called `default` is the main book; every other profile is treated as a standalone (annex) edition. If `build-profiles.json` has no `default` entry, the first profile listed is used when none is requested. Its name is then not `default`, so `.standalone-only` content shows in that build.
+
+### Profile-Conditional Content
+
+When annexes are pulled into the main book (`@annexes` in `book-order.txt`), the same Markdown files feed both the main book and each standalone annex build. To include content in only some of those builds, wrap it in a fenced div (or use the classes on a heading or span):
+
+```markdown
+::: {.license .profile-only profiles="annex1 annex2 annex3"}
+This annex is licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
+:::
+
+::: {.license .standalone-only}
+Shown in every build except the main book (`build-profile` is not `default`).
+:::
+
+## Edition Notes {.standalone-only}
+
+Text with an [annex-only aside]{.profile-only profiles="annex2"}.
+```
+
+| Class | Renders when |
+|-------|--------------|
+| `.profile-only` + `profiles="…"` | The active profile is in the list. Separate names with spaces or commas; list `default` to include the main book. |
+| `.standalone-only` | The active profile is anything other than `default`. |
+
+- If content is allowed, the control classes and the `profiles` attribute are removed and other classes (such as `.license`) are kept for styling. If it is hidden, the whole element is dropped.
+- `.profile-only` without a `profiles` attribute renders everywhere, and the build prints a warning.
+- `profile_visibility.lua` runs before every other filter. `iasp-semantics.lua` applies the same rule to content brought in by `.include` directives.
+- `generate_toc.py` receives the active profile (`--profile`, or `$BUILD_PROFILE`), so headings in hidden blocks don't appear in the front-matter TOC or the annex TOCs (`annexN-toc.md`) written during that build.
+- Documents without these classes are unaffected.
+
+### Title-Page Notice
+
+`titlepage-notice` adds a short notice, such as a licence statement, to the generated title page. Set it in a profile's metadata file (for example `annexes/annex2/annex2-metadata.yaml`) so it appears only in that build:
+
+```yaml
+titlepage-notice: |
+  This work is licensed under a
+  [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/).
+```
+
+The value is Markdown. Links are live in both PDF and EPUB, and several paragraphs are allowed.
+
+| Value | Effect |
+|-------|--------|
+| *(key absent)* | No change |
+| Markdown text | Rendered as the notice |
+| `rights` or `true` | Reuse the `rights` metadata value |
+| `false` | No notice, even if `titlepage-rights` is set |
+
+`titlepage-rights: true` is a shorthand for `titlepage-notice: rights` and only applies when `titlepage-notice` is absent.
+
+- **PDF**: the notice is printed in small type, centered, below the title, author and date on the `\maketitle` page. The builder writes `build/titlepage-notice.tex` and includes it with `--include-in-header`. The notice is appended to the typeset date block when the document begins, so the document's `date` metadata is untouched. To change the look, define `\iasptitlepagenoticefont` (default `\small`) or `\iasptitlepagenoticeskip` (default `2\baselineskip`) with `\newcommand` in a header included earlier (such as the PDF layout overrides), or with `\renewcommand` inside `\AtBeginDocument`.
+- **EPUB**: the notice is inserted as `<div class="titlepage-notice">` at the end of the title-page section in `title_page.xhtml`. It is styled in `styles-epub.css`. pandoc's EPUB title page already prints `rights`, so when the notice is just the `rights` value it is not added a second time.
+- DOCX/RTF outputs are unchanged.
+
 ---
 
 ## Key Scripts
@@ -239,6 +295,8 @@ Each build writes dynamic metadata to `build/build-metadata.json`:
 | `version-with-build` | e.g., `0.33-preproof (build 42)` |
 | `last-commit-date` | Most recent git commit |
 | `last-commit-comment` | Commit subject line |
+| `build-stage` | `draft` or `final` (controls `.draft` / `.final` blocks) |
+| `build-profile` | Active build profile (controls `.profile-only` / `.standalone-only` blocks) |
 
 Counter persists in `.build-info.json` (git-ignored).
 
@@ -398,8 +456,10 @@ python3 iasp_tooling/scripts/optimize_pdf.py build/articles/*.pdf
 
 | Filter | Purpose |
 |--------|---------|
+| `profile_visibility.lua` | Drops `.profile-only` / `.standalone-only` content hidden for the active profile (runs first) |
 | `iasp-semantics.lua` | Semantic processing, includes, visibility |
-| `iasp-toc.lua` | Lightweight TOC parsing |
+| `iasp-toc.lua` | Lightweight TOC parsing (profile-aware) |
+| `titlepage_notice.lua` | Renders `titlepage-notice` for the PDF and EPUB title pages (run by the builder in a separate pandoc call) |
 
 ---
 

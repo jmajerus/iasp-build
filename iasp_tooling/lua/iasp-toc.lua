@@ -6,6 +6,7 @@ package.path = package.path .. ";" .. script_dir .. "/?.lua;" .. script_dir .. "
 
 local shorthand = require("iasp.shorthand")
 local include = require("iasp.include")
+local profile_visibility = require("iasp.profile")
 
 local function add_unique(tbl, value)
   for _, existing in ipairs(tbl) do
@@ -153,13 +154,18 @@ local function namespace_header_identifiers(blocks, prefix, min_level)
   return container.content
 end
 
+local active_profile = profile_visibility.DEFAULT_PROFILE
+
 local function preprocess_shorthand(doc)
+  active_profile = profile_visibility.current_profile(doc.meta)
   return shorthand.preprocess_shorthand(doc, function() end)
 end
 
 local include_expander = include.create({
   expand_compound_classes = expand_compound_classes,
-  enforce_stage_visibility = function() return true end,
+  enforce_stage_visibility = function(el)
+    return profile_visibility.enforce(el, active_profile)
+  end,
   enforce_section_visibility = function() return true end,
   latex_escape_argument = latex_escape_argument,
   begins_with_level_one_header = begins_with_level_one_header,
@@ -170,7 +176,11 @@ local include_expander = include.create({
   has_class = has_class,
 })
 
+-- generate_toc.py passes `-M build-profile=<name>` so headings inside
+-- .profile-only / .standalone-only blocks hidden for that profile are dropped
+-- before the outline is collected.
 return {
   { Pandoc = preprocess_shorthand },
   { Div = include_expander.expand_include_div },
+  { Pandoc = profile_visibility.apply_to_document },
 }
