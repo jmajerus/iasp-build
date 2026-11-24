@@ -2631,6 +2631,7 @@ def build_article_pdf(
         if header.exists():
             cmd += ["--include-in-header", str(header)]
 
+    append_profile_filter(cmd)
     append_catalog_collections_filter(cmd)
 
     append_semantic_filters(cmd, enabled=use_filter)

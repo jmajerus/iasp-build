@@ -35,12 +35,19 @@ local function to_blocks(node)
   if node == nil then
     return nil
   end
+  -- pandoc 3 exposes YAML Markdown values as Inlines/Blocks; older
+  -- versions use MetaInlines/MetaBlocks tables. Keep the AST either way so
+  -- links and formatting survive.
   local kind = utils.type(node)
-  if kind == "Blocks" then
-    return node
-  elseif kind == "Inlines" then
-    return pandoc.Blocks({ pandoc.Plain(node) })
-  elseif kind == "string" then
+  local tag = type(node) == "table" and node.t or nil
+  if kind == "Blocks" or tag == "MetaBlocks" then
+    return pandoc.Blocks(node)
+  elseif kind == "Inlines" or tag == "MetaInlines" then
+    return pandoc.Blocks({ pandoc.Plain(pandoc.Inlines(node)) })
+  elseif kind == "string" or tag == "MetaString" then
+    if tag == "MetaString" then
+      node = node.text
+    end
     return pandoc.read(node, "markdown").blocks
   end
   local text = trim(utils.stringify(node))

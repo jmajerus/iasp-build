@@ -378,3 +378,47 @@ def test_epub_builds_for_main_book_and_annex(tmp_path):
     assert '<div class="titlepage-notice">' in title_page
     assert 'href="https://creativecommons.org/licenses/by-nc/4.0/"' in title_page
     assert "LICENSE-MARKER" in body
+
+
+@requires_pandoc
+@pytest.mark.parametrize("target", ["latex", "html"])
+def test_notice_rights_alias_keeps_links_and_formatting(tmp_path, target):
+    metadata = (
+        'rights: "*© 2026* Example. [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)."\n'
+        "titlepage-notice: rights\n"
+    )
+    if target == "latex":
+        latex = _render_notice(tmp_path, metadata, "latex")
+        assert r"\href{https://creativecommons.org/licenses/by-nc/4.0/}{CC BY-NC 4.0}" in latex
+        assert r"\emph{© 2026}" in latex
+    else:
+        # The EPUB target skips the rights alias; rendering it as plain HTML
+        # (any non-epub target) shows the AST is preserved there too.
+        html = _render_notice(tmp_path, metadata, "html")
+        assert '<a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>' in html
+        assert "<em>© 2026</em>" in html
+
+
+def test_article_pdf_runs_profile_filter_before_other_filters(tmp_path, monkeypatch):
+    from iasp_tooling import build_book
+
+    source = tmp_path / "article.md"
+    source.write_text("# Article\n\nBody.\n", encoding="utf-8")
+    captured: list[list[str]] = []
+
+    class Stop(Exception):
+        pass
+
+    def fake_run(cmd):
+        captured.append(cmd)
+        raise Stop
+
+    monkeypatch.setattr(build_book, "run", fake_run)
+    monkeypatch.setattr(build_book, "ensure_build_dir", lambda: None)
+    monkeypatch.setattr(build_book, "verify_citations", lambda inputs: None)
+    with pytest.raises(Stop):
+        build_book.build_article_pdf(source, str(tmp_path / "out.pdf"))
+
+    filters = [captured[0][i + 1] for i, arg in enumerate(captured[0]) if arg == "--lua-filter"]
+    assert filters, captured[0]
+    assert Path(filters[0]).name == "profile_visibility.lua"
