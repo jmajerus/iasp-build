@@ -19,7 +19,9 @@ honouring the existing semantic markup pipeline.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -52,6 +54,12 @@ PART_META_PATH = ROOT / "parts_meta.json"
 TAGGER = TOOLING_ROOT / "tag_by_dir.py"
 PANDOC_MARKDOWN_FORMAT = "markdown+fenced_divs+header_attributes+link_attributes+smart"
 TOC_LUA_FILTER = TOOLING_ROOT / "lua" / "iasp-toc.lua"
+
+# Active build profile. Headings inside `.profile-only` / `.standalone-only`
+# blocks that are hidden for this profile are left out of every generated TOC.
+# build_book passes --profile; BUILD_PROFILE in the environment is the fallback.
+DEFAULT_BUILD_PROFILE = "default"
+BUILD_PROFILE = (os.environ.get("BUILD_PROFILE") or "").strip() or DEFAULT_BUILD_PROFILE
 
 EPIGRAPH_TYPES = {"epigraph", "epigraph-inline"}
 
@@ -722,6 +730,7 @@ def run_pandoc_json(path: Path) -> dict[str, Any]:
         "json",
     ]
     if TOC_LUA_FILTER.exists():
+        cmd += ["--metadata", f"build-profile={BUILD_PROFILE}"]
         cmd += ["--lua-filter", str(TOC_LUA_FILTER)]
     cmd.append(str(path))
     result = subprocess.run(
@@ -2368,7 +2377,25 @@ def render_annex_toc(
     return "\n".join(lines)
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate the front-matter and annex TOCs.")
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Active build profile; controls .profile-only/.standalone-only visibility "
+        "(default: $BUILD_PROFILE or 'default').",
+    )
+    args, _unknown = parser.parse_known_args(argv)
+    return args
+
+
+def main(argv: list[str] | None = None) -> None:
+    global BUILD_PROFILE
+    args = _parse_args(argv)
+    if args.profile and args.profile.strip():
+        BUILD_PROFILE = args.profile.strip()
+        load_document_blocks.cache_clear()
+
     if not TOC_ENABLED:
         print("-- TOC generation disabled via iasp-config; skipping")
         return

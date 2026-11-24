@@ -21,6 +21,7 @@ local shorthand = require("iasp.shorthand")
 local include = require("iasp.include")
 local table_appearance = require("iasp.table_appearance")
 local latex_helpers = require("iasp.latex")
+local profile_visibility = require("iasp.profile")
 
 local meta_value = meta.meta_value
 local truthy_string = meta.truthy_string
@@ -120,14 +121,34 @@ local function stage_class_from_element(el)
   return nil
 end
 
+local function current_build_profile()
+  local value = meta_value("build-profile")
+  if value and value ~= "" then
+    return value
+  end
+  return profile_visibility.DEFAULT_PROFILE
+end
+
+-- Profile-conditional markup (.profile-only / .standalone-only) is checked
+-- alongside the .draft/.final stage classes. profile_visibility.lua usually
+-- removes hidden content first; this catches content expanded from includes.
+local function enforce_profile_visibility(el)
+  return profile_visibility.enforce(el, current_build_profile())
+end
+
 local function enforce_stage_visibility(el)
   if not el then
     return true, false
   end
 
+  local profile_allowed, profile_changed = enforce_profile_visibility(el)
+  if not profile_allowed then
+    return false, false
+  end
+
   local stage_class = stage_class_from_element(el)
   if not stage_class then
-    return true, false
+    return true, profile_changed
   end
 
   local stage = current_build_stage()
@@ -146,7 +167,7 @@ local function enforce_stage_visibility(el)
     end
   end
 
-  local mutated = #retained ~= #el.classes
+  local mutated = profile_changed or #retained ~= #el.classes
   el.classes = retained
   return true, mutated
 end

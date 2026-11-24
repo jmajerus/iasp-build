@@ -217,6 +217,8 @@ Tools may choose to:
 
 IASP makes no requirements of tooling.
 
+Build-control classes are not intent markup. They decide *whether* content appears in a given build, not what it means: `.draft` / `.final` choose by build stage, and `.profile-only` / `.standalone-only` choose by build profile. The reference tooling documents them under *Build Pipeline → Profile-Conditional Content*.
+
 ------
 
 ## 12. Why This Is Shareable
