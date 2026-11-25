@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
+from . import __version__
 from .paths import PROJECT_ROOT_ENV
 
 
@@ -14,6 +15,7 @@ def main(default_project_root: Path | None = None) -> None:
         allow_abbrev=False,
     )
     parser.add_argument("--project-root", type=Path, help="Manuscript directory (default: current directory)")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     options, build_args = parser.parse_known_args()
 
     root = options.project_root or os.environ.get(PROJECT_ROOT_ENV) or default_project_root or Path.cwd()

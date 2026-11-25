@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from . import __version__
 from .lib import config as iasp_config
 from .lib import layout_overrides, vscode_tasks
 from .lib.background_palettes import select_luma_offset
@@ -905,6 +906,8 @@ def update_build_metadata(build_stage: str | None = None) -> None:
 
     if PROFILE:
         dynamic_metadata["build-profile"] = PROFILE.name
+
+    dynamic_metadata["iasp-build-version"] = __version__
 
     declared_version = _read_declared_version()
     if declared_version:
@@ -2905,6 +2908,7 @@ def main(argv: list[str] | None = None) -> None:
     profile = load_build_profile(requested_profile)
     apply_profile(profile)
 
+    print(f"\n== iasp-build {__version__} ==")
     print(f"\n== Using build profile: {profile.name} ==")
 
     if not args:

@@ -8,6 +8,8 @@ import zipfile
 
 import pytest
 
+import iasp_tooling
+
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="Pandoc is required for a manuscript build")
 def test_cli_builds_manuscript_outside_tooling_checkout(tmp_path):
@@ -65,6 +67,9 @@ def test_cli_builds_manuscript_outside_tooling_checkout(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads((manuscript / "metadata.json").read_text())["title"] == "Portable manuscript"
+    build_metadata = json.loads((manuscript / "build" / "build-metadata.json").read_text())
+    assert build_metadata["iasp-build-version"] == iasp_tooling.__version__
+    assert f"== iasp-build {iasp_tooling.__version__} ==" in result.stdout
     assert "introduction.md" in (manuscript / "build" / "book-order.generated.md").read_text()
     with zipfile.ZipFile(manuscript / "build" / "portable.docx") as docx:
         document = docx.read("word/document.xml")

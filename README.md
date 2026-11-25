@@ -39,7 +39,7 @@ iasp-build --profile annex1 pdf-screen
 iasp-build article-md articles/example.md
 ```
 
-From elsewhere, pass `--project-root /path/to/manuscript`. A minimal manuscript needs `metadata.yaml`, `book-order.txt` listing its Markdown files, and `iasp-config.yaml` with `toc.enabled: false` if it has no generated table of contents. Named profiles in `build-profiles.json` can select an order file, additional metadata, cover artwork, and an output basename. Outputs go into the manuscript’s `build/` directory.
+From elsewhere, pass `--project-root /path/to/manuscript`. A minimal manuscript needs `metadata.yaml`, `book-order.txt` listing its Markdown files, and `iasp-config.yaml` with `toc.enabled: false` if it has no generated table of contents. Named profiles in `build-profiles.json` can select an order file, additional metadata, cover artwork, and an output basename. Outputs go into the manuscript’s `build/` directory. Each build prints the iasp-build version it ran with and records it as `iasp-build-version` in `build/build-metadata.json`; `iasp-build --version` shows it too. When running from a checkout, the version includes the commit, such as `0.1.4+g1a2b3c4`, with `.dirty` added for uncommitted changes.
 
 See the [pipeline guide](docs/Build%20Pipeline.md) and [semantic vocabulary](docs/Semantic%20Vocabulary.md) for details. Some examples use files from the original manuscript checkout.
 
