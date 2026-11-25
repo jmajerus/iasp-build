@@ -23,10 +23,10 @@ See the [iasp-mcp tool reference](https://github.com/jmajerus/iasp-mcp/blob/main
 
 ## Install
 
-Each release on GitHub has a wheel attached. To make builds repeatable, pin a release in the manuscript's `requirements-build.txt`:
+Each [release](https://github.com/jmajerus/iasp-build/releases) has a wheel attached. To make builds repeatable, pin a release in the manuscript's `requirements-build.txt`, replacing `X.Y.Z` with a version listed on the releases page:
 
 ```text
-iasp-build[kdp] @ https://github.com/jmajerus/iasp-build/releases/download/v0.1.4/iasp_build-0.1.4-py3-none-any.whl
+iasp-build[kdp] @ https://github.com/jmajerus/iasp-build/releases/download/vX.Y.Z/iasp_build-X.Y.Z-py3-none-any.whl
 ```
 
 Then install it into the virtual environment used by your manuscript with `python3 -m pip install -r requirements-build.txt`. To try unreleased changes, install from a checkout instead: `python3 -m pip install -e '/path/to/iasp-build'`.

@@ -41,7 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          # A push run builds the commit that triggered it, even if main has
+          # moved on since. A manual run always releases main, whichever
+          # branch it was started from, because its bump is pushed to main.
+          ref: ${{ github.event_name == 'push' && github.sha || 'main' }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
