@@ -127,25 +127,25 @@ These can be combined on the same fenced Div.
 
 ## PDF Modes
 
-The build script supports multiple PDF modes:
+There are two kinds of PDF: digital, for reading on a computer, and print, for KDP.
 
-| Target | Mode | Page |
+| Target | Kind | Page |
 |--------|------|------|
-| `pdf-screen` | screen | 6 × 9 in, 1.1 in margins |
+| `pdf`, `pdf-screen`, `draft-pdf`, `all` | digital | The profile's `pdf_page`: US Letter with 1 in margins unless set |
 | `pdf-print` | print | KDP trim, 6.69 × 9.61 in, with the gutter sized for the page count |
-| `pdf`, `draft-pdf`, `all`, `pdf-debug` | the profile's `pdf_mode` | US Letter, 1.1 in margins, when the profile sets no `pdf_mode` |
+| `pdf-debug` | digital | Writes `build/debug.tex` instead of a PDF; `pdf-debug-print` for print |
 
-`pdf-debug` writes `build/debug.tex` instead of a PDF. `pdf-debug-screen` and `pdf-debug-print` fix the mode.
+`pdf` and `pdf-screen` are the same build. Both write `<output_basename>.pdf`. Digital PDFs use page-number footers, no head rule, and coloured links. Print PDFs put the folio in the header and keep the KDP gutter. The kind is passed to `pdf-header.tex` as `pdfmode` (`screen` or `print`).
 
-The mode is passed via `pdfmode` metadata and controls geometry, headers, and link styling in `pdf-header.tex`. Screen and Letter builds write the same file, `<output_basename>.pdf`, so set `pdf_mode` on a profile (see [Build Profiles](Build%20Pipeline.md#build-profiles)) to give it one page size whichever PDF target builds it:
+A profile in `build-profiles.json` chooses the digital page with `pdf_page`:
 
-```json
-"annex1": {
-  "order_file": "annexes/annex1/book-order.txt",
-  "output_basename": "Dehumanization-Frameworks",
-  "pdf_mode": "screen"
-}
-```
+| `pdf_page` | Page | Margins |
+|------------|------|---------|
+| `letter` (default) | 8.5 × 11 in | 1 in |
+| `a4` | 210 × 297 mm | 1 in |
+| `6x9` | 6 × 9 in, the trade paperback shape, for proofing against print | 1.1 in |
+
+A portrait page leaves some border on a landscape monitor when the whole page is shown. Fit-width view fills the screen.
 
 ---
 

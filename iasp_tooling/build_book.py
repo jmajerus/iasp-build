@@ -227,12 +227,19 @@ class BuildProfile:
     metadata_files: list[Path]
     cover_image: Path | None
     output_basename: str
-    # PDF mode for targets that do not name one (pdf, draft-pdf, all, ...):
-    # "screen" (6×9 in), "print" (KDP trim), or None for US Letter.
-    pdf_mode: str | None = None
+    # Page for digital (non-print) PDFs. Print builds always use KDP trim.
+    pdf_page: str = "letter"
 
 
-PDF_MODES = ("screen", "print")
+# Page size and margins for digital PDFs, by the profile's pdf_page.
+# Named for the page, not a device: a portrait page this size suits a
+# desktop monitor at fit-width.
+PDF_PAGES = {
+    "letter": "paperwidth=8.5in,paperheight=11in,margin=1in",
+    "a4": "paperwidth=210mm,paperheight=297mm,margin=1in",
+    # Trade paperback shape, for proofing against the printed book.
+    "6x9": "paperwidth=6in,paperheight=9in,margin=1.1in",
+}
 
 PROFILE: BuildProfile | None = None
 PROFILE_METADATA_FILES: list[Path] = [METADATA_JSON, METADATA_YAML]
@@ -310,10 +317,10 @@ def load_build_profile(profile_name: str | None) -> BuildProfile:
 
     basename = str(entry.get("output_basename") or entry.get("output") or DEFAULT_OUTPUT_BASENAME)
 
-    pdf_mode = entry.get("pdf_mode")
-    if pdf_mode is not None and pdf_mode not in PDF_MODES:
-        allowed = ", ".join(f'"{mode}"' for mode in PDF_MODES)
-        print(f"!! Build profile '{resolved_name}' has pdf_mode {pdf_mode!r}; use {allowed}, or omit it for US Letter.")
+    pdf_page = str(entry.get("pdf_page") or "letter")
+    if pdf_page not in PDF_PAGES:
+        allowed = ", ".join(f'"{page}"' for page in PDF_PAGES)
+        print(f"!! Build profile '{resolved_name}' has pdf_page {pdf_page!r}; use one of {allowed}.")
         sys.exit(1)
 
     return BuildProfile(
@@ -322,21 +329,15 @@ def load_build_profile(profile_name: str | None) -> BuildProfile:
         metadata_files=metadata_files,
         cover_image=cover_path,
         output_basename=basename,
-        pdf_mode=pdf_mode,
+        pdf_page=pdf_page,
     )
 
 
-def resolve_pdfmode(pdfmode: str | None) -> str | None:
-    """Fall back to the active profile's pdf_mode when a target names none.
+def digital_pdf_geometry() -> str:
+    """Geometry for digital PDFs from the active profile's pdf_page."""
 
-    Without this, the same profile built with "pdf" and with "pdf-screen"
-    gets different page sizes but the same output file name.
-    """
-
-    if pdfmode is None and PROFILE is not None and PROFILE.pdf_mode:
-        print(f"-- PDF mode '{PROFILE.pdf_mode}' from build profile '{PROFILE.name}'")
-        return PROFILE.pdf_mode
-    return pdfmode
+    page = PROFILE.pdf_page if PROFILE is not None else "letter"
+    return f"{PDF_PAGES[page]},twoside=false"
 
 
 def apply_profile(profile: BuildProfile) -> None:
@@ -2166,14 +2167,9 @@ def make_pdf_base_cmd(
         # pages) must meet the KDP minimum. Use the same buffer on both sides.
         geometry_opts = f"paperwidth=6.69in,paperheight=9.61in,left={gutter}in,right={gutter}in,top=0.75in,bottom=0.875in,twoside=false"
         cmd += [f"--variable=geometry:{geometry_opts}"]
-    elif pdfmode == "screen":
-        # Screen: explicit 6×9" configuration with comfortable margins
-        geometry_opts = "paperwidth=6in,paperheight=9in,margin=1.1in,twoside=false"
-        cmd += [f"--variable=geometry:{geometry_opts}"]
     else:
-        # Default: letter size with 1.1-inch margins (historical standard)
-        geometry_opts = "margin=1.1in,twoside=false"
-        cmd += [f"--variable=geometry:{geometry_opts}"]
+        # Digital ("screen") PDFs: the profile's pdf_page, US Letter by default.
+        cmd += [f"--variable=geometry:{digital_pdf_geometry()}"]
 
     cmd += [
         "--top-level-division=chapter",
@@ -2511,7 +2507,9 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     screen-style name.
     """
 
-    pdfmode = resolve_pdfmode(pdfmode)
+    # Every PDF that is not for print is a digital build, so "pdf" and
+    # "pdf-screen" produce the same file.
+    pdfmode = pdfmode or "screen"
     ensure_build_dir()
     stage_cover_image()
     
@@ -2525,7 +2523,6 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     if pdfmode == "print":
         out_path = PDF_OUT_PRINT
     else:
-        # Treat anything else (including None) as screen-style output
         out_path = PDF_OUT_SCREEN
 
     cmd += ["-o", str(out_path)]
@@ -2550,7 +2547,7 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
 
 def build_pdf_debug(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build only debug.tex (LaTeX) for inspection."""
-    pdfmode = resolve_pdfmode(pdfmode)
+    pdfmode = pdfmode or "screen"
     ensure_build_dir()
     stage_cover_image()
     cmd = make_pdf_base_cmd(use_filter, pdfmode=pdfmode, include_sentinel=True)

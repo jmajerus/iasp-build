@@ -96,8 +96,8 @@ annex/companion build. Each profile supports these keys:
 - `cover` – optional EPUB/PDF cover image.
 - `output_basename` – base file name for EPUB/PDF/DOCX/RTF artifacts
   (defaults to the main title when omitted).
-- `pdf_mode` – optional `"screen"` (6 × 9 in) or `"print"` (KDP trim) for
-  PDF targets that name no mode, such as `pdf`. Omit it for US Letter.
+- `pdf_page` – page for digital PDFs: `letter` (default), `a4`, or `6x9`.
+  Print PDFs always use the KDP trim size.
 
 The repo ships with a `build-pipeline-annex` profile that assembles the
 “Build Pipeline Technical Annex” booklet (workflow docs + automation
@@ -223,12 +223,14 @@ generated metadata stack:
 
 When you need specific page profiles, run the dedicated PDF modes:
 
-- `Build PDF (screen)` → `pdf-screen` (single-sided margins)
-- `Build PDF (print)` → `pdf-print` (mirrored margins + binding offset)
+- `Build PDF (screen)` → `pdf-screen`, the digital PDF (same as `pdf`): the
+  profile's `pdf_page`, US Letter with 1 in margins by default
+- `Build PDF (print)` → `pdf-print` (KDP trim size and gutter)
 - `Build PDF (debug)` → `pdf-debug` (injects layout sentinels/notes)
 
-These use the same XeLaTeX header but set `pdfmode` to tune geometry,
-header/footer, and link styling.
+These use the same XeLaTeX header but set `pdfmode` (`screen` or `print`)
+to tune geometry, header/footer, and link styling. See
+[PDF Styling](PDF%20Styling.md#pdf-modes) for the page sizes.
 
 ### Operational tasks
 
