@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iasp-build"
-version = "0.1.4"
+version = "0.1.5"
 description = "Pandoc-based build tools for manuscripts using the Informative Authoring Semantics Profile"
 readme = "README.md"
 requires-python = ">=3.10"
