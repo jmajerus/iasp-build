@@ -227,7 +227,12 @@ class BuildProfile:
     metadata_files: list[Path]
     cover_image: Path | None
     output_basename: str
+    # PDF mode for targets that do not name one (pdf, draft-pdf, all, ...):
+    # "screen" (6×9 in), "print" (KDP trim), or None for US Letter.
+    pdf_mode: str | None = None
 
+
+PDF_MODES = ("screen", "print")
 
 PROFILE: BuildProfile | None = None
 PROFILE_METADATA_FILES: list[Path] = [METADATA_JSON, METADATA_YAML]
@@ -305,13 +310,33 @@ def load_build_profile(profile_name: str | None) -> BuildProfile:
 
     basename = str(entry.get("output_basename") or entry.get("output") or DEFAULT_OUTPUT_BASENAME)
 
+    pdf_mode = entry.get("pdf_mode")
+    if pdf_mode is not None and pdf_mode not in PDF_MODES:
+        allowed = ", ".join(f'"{mode}"' for mode in PDF_MODES)
+        print(f"!! Build profile '{resolved_name}' has pdf_mode {pdf_mode!r}; use {allowed}, or omit it for US Letter.")
+        sys.exit(1)
+
     return BuildProfile(
         name=resolved_name,
         order_file=order_path,
         metadata_files=metadata_files,
         cover_image=cover_path,
         output_basename=basename,
+        pdf_mode=pdf_mode,
     )
+
+
+def resolve_pdfmode(pdfmode: str | None) -> str | None:
+    """Fall back to the active profile's pdf_mode when a target names none.
+
+    Without this, the same profile built with "pdf" and with "pdf-screen"
+    gets different page sizes but the same output file name.
+    """
+
+    if pdfmode is None and PROFILE is not None and PROFILE.pdf_mode:
+        print(f"-- PDF mode '{PROFILE.pdf_mode}' from build profile '{PROFILE.name}'")
+        return PROFILE.pdf_mode
+    return pdfmode
 
 
 def apply_profile(profile: BuildProfile) -> None:
@@ -2486,6 +2511,7 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
     screen-style name.
     """
 
+    pdfmode = resolve_pdfmode(pdfmode)
     ensure_build_dir()
     stage_cover_image()
     
@@ -2524,6 +2550,7 @@ def build_pdf(use_filter: bool = True, pdfmode: str | None = None) -> None:
 
 def build_pdf_debug(use_filter: bool = True, pdfmode: str | None = None) -> None:
     """Build only debug.tex (LaTeX) for inspection."""
+    pdfmode = resolve_pdfmode(pdfmode)
     ensure_build_dir()
     stage_cover_image()
     cmd = make_pdf_base_cmd(use_filter, pdfmode=pdfmode, include_sentinel=True)

@@ -129,13 +129,23 @@ These can be combined on the same fenced Div.
 
 The build script supports multiple PDF modes:
 
-| Target | Mode | Description |
-|--------|------|-------------|
-| `pdf` / `pdf-screen` | screen | Single-sided margins, optimized links |
-| `pdf-print` | print | Mirrored margins, binding offset |
-| `pdf-debug` | debug | Layout sentinels and notes |
+| Target | Mode | Page |
+|--------|------|------|
+| `pdf-screen` | screen | 6 × 9 in, 1.1 in margins |
+| `pdf-print` | print | KDP trim, 6.69 × 9.61 in, with the gutter sized for the page count |
+| `pdf`, `draft-pdf`, `all`, `pdf-debug` | the profile's `pdf_mode` | US Letter, 1.1 in margins, when the profile sets no `pdf_mode` |
 
-The mode is passed via `pdfmode` metadata and controls geometry, headers, and link styling in `pdf-header.tex`.
+`pdf-debug` writes `build/debug.tex` instead of a PDF. `pdf-debug-screen` and `pdf-debug-print` fix the mode.
+
+The mode is passed via `pdfmode` metadata and controls geometry, headers, and link styling in `pdf-header.tex`. Screen and Letter builds write the same file, `<output_basename>.pdf`, so set `pdf_mode` on a profile (see [Build Profiles](Build%20Pipeline.md#build-profiles)) to give it one page size whichever PDF target builds it:
+
+```json
+"annex1": {
+  "order_file": "annexes/annex1/book-order.txt",
+  "output_basename": "Dehumanization-Frameworks",
+  "pdf_mode": "screen"
+}
+```
 
 ---
 

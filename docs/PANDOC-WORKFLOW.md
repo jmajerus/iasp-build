@@ -96,6 +96,8 @@ annex/companion build. Each profile supports these keys:
 - `cover` – optional EPUB/PDF cover image.
 - `output_basename` – base file name for EPUB/PDF/DOCX/RTF artifacts
   (defaults to the main title when omitted).
+- `pdf_mode` – optional `"screen"` (6 × 9 in) or `"print"` (KDP trim) for
+  PDF targets that name no mode, such as `pdf`. Omit it for US Letter.
 
 The repo ships with a `build-pipeline-annex` profile that assembles the
 “Build Pipeline Technical Annex” booklet (workflow docs + automation

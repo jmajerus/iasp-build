@@ -178,10 +178,13 @@ All build commands are wrapped in `.vscode/tasks.json`:
   "build-pipeline-annex": {
     "order_file": "annexes/build-pipeline-annex-order.txt",
     "metadata": ["annexes/build-pipeline-annex-metadata.yaml"],
-    "output_basename": "Build-Pipeline-Technical-Annex"
+    "output_basename": "Build-Pipeline-Technical-Annex",
+    "pdf_mode": "screen"
   }
 }
 ```
+
+`pdf_mode` is optional. It sets the PDF mode for targets that don't name one (`pdf`, `draft-pdf`, `all`, `pdf-debug`): `"screen"` for 6 × 9 in or `"print"` for the KDP trim size. Without it those targets produce US Letter. `pdf-screen` and `pdf-print` always use their own mode. Set it on annex profiles so every PDF task gives the annex the same page size.
 
 ### Switching Profiles
 
