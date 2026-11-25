@@ -85,6 +85,7 @@ CATALOG_COLLECTIONS_FILTER = TOOLING_ROOT / "lua" / "catalog_collections.lua"
 CHAPTER_FILTER = TOOLING_ROOT / "lua" / "chapter_headings.lua"
 TITLE_FROM_HEADING_FILTER = TOOLING_ROOT / "lua" / "title_from_first_heading.lua"
 RUNNING_HEAD_FILTER = TOOLING_ROOT / "lua" / "running_headers.lua"
+REFERENCES_RUNNING_HEAD_FILTER = TOOLING_ROOT / "lua" / "references_running_head.lua"
 PROFILE_VISIBILITY_FILTER = TOOLING_ROOT / "lua" / "profile_visibility.lua"
 TITLEPAGE_NOTICE_FILTER = TOOLING_ROOT / "lua" / "titlepage_notice.lua"
 METADATA_JSON = ROOT / "metadata.json"
@@ -1150,10 +1151,16 @@ def append_semantic_filters(cmd: list[str], *, enabled: bool) -> None:
 
 
 def enable_citations(cmd: list[str]) -> None:
-    """Ensure citeproc is enabled so bibliography data is rendered."""
+    """Ensure citeproc is enabled so bibliography data is rendered.
+
+    Filters that act on the reference section citeproc generates must come
+    after ``--citeproc``, because Pandoc runs filters in command-line order.
+    """
 
     if "--citeproc" not in cmd:
         cmd.append("--citeproc")
+    if REFERENCES_RUNNING_HEAD_FILTER.exists():
+        cmd += ["--lua-filter", str(REFERENCES_RUNNING_HEAD_FILTER)]
 
 
 def collect_bibliography_keys() -> set[str]:

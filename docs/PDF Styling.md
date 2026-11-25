@@ -109,6 +109,8 @@ layout:
     appendices: true  # Appendix sequence
 ```
 
+The reference section that citeproc generates (titled by `reference-section-title`) gets its own running head, using that title. Because citeproc builds the section only after the other Lua filters have run, `references_running_head.lua` is added right after `--citeproc` to set it.
+
 ---
 
 ## Page Layout Classes
