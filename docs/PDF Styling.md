@@ -131,7 +131,7 @@ There are two kinds of PDF: digital, for reading on a computer, and print, for K
 
 | Target | Kind | Page |
 |--------|------|------|
-| `pdf`, `pdf-screen`, `draft-pdf`, `all` | digital | The profile's `pdf_page`: US Letter with 1 in margins unless set |
+| `pdf`, `pdf-screen`, `draft-pdf`, `all`, `draft-all` | digital | The profile's `pdf_page`: US Letter with 1 in margins unless set |
 | `pdf-print` | print | KDP trim, 6.69 × 9.61 in, with the gutter sized for the page count |
 | `pdf-debug` | digital | Writes `build/debug.tex` instead of a PDF; `pdf-debug-print` for print |
 
