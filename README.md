@@ -23,11 +23,13 @@ See the [iasp-mcp tool reference](https://github.com/jmajerus/iasp-mcp/blob/main
 
 ## Install
 
-Install from this checkout into the virtual environment used by your manuscript:
+Releases are published on [PyPI](https://pypi.org/project/iasp-build/). A manuscript lists the release series it is written for in its `requirements-build.txt`:
 
-```sh
-python3 -m pip install '/path/to/iasp-build'
+```text
+iasp-build[kdp]~=0.1.4
 ```
+
+`~=0.1.4` accepts 0.1.4 and any later 0.1.x release. Install or upgrade the virtual environment used by your manuscript with `python3 -m pip install -U -r requirements-build.txt`. New releases then reach the manuscript without a commit to its repository. To try unreleased changes, install from a checkout instead: `python3 -m pip install -e '/path/to/iasp-build'`.
 
 The `kdp` extra adds Pillow for cover generation. Install Pandoc separately. PDF builds require XeLaTeX and its LaTeX packages. The builder can also use EPUBCheck for EPUB validation and qpdf for PDF optimization.
 
@@ -59,3 +61,13 @@ to `docs/build/annexes/`.
 ## Tests
 
 To run the tests, install the `test` extra and run `python3 -m pytest`. The detached-manuscript integration test uses Pandoc.
+
+CI runs the tests on every pull request and on each push to `main`.
+
+## Releasing
+
+Releases are published by the [Release workflow](.github/workflows/release.yml). To cut one, go to **Actions → Release → Run workflow** and choose `patch`, `minor` or `major`. The workflow bumps the version in `pyproject.toml`, runs the tests, commits `Release X.Y.Z` to `main`, uploads the wheel and sdist to PyPI, and publishes a GitHub Release tagged `vX.Y.Z` with the same files. If you bump the version yourself in a pull request, merging it to `main` starts the same release.
+
+While the version is `0.x`, use `patch` for fixes and features that existing manuscripts can build with unchanged, and `minor` for changes that need manuscripts to be updated. Manuscripts that pin `~=0.1.4` pick up patch releases automatically and need an edit to move to `0.2`.
+
+PyPI uploads use [trusted publishing](https://docs.pypi.org/trusted-publishers/), so the repository stores no PyPI token. The trusted publisher on PyPI names this repository, the `release.yml` workflow and the `pypi` environment.
