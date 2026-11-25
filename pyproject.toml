@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,12 +8,18 @@ version = "0.1.3"
 description = "Pandoc-based build tools for manuscripts using the Informative Authoring Semantics Profile"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {file = "LICENSE.md"}
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE.md"]
 dependencies = ["PyYAML>=6"]
 
 [project.optional-dependencies]
 kdp = ["Pillow>=9"]
 test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/jmajerus/iasp-build"
+Documentation = "https://github.com/jmajerus/iasp-build/tree/main/docs"
+Changelog = "https://github.com/jmajerus/iasp-build/releases"
 
 [project.scripts]
 iasp-build = "iasp_tooling.cli:main"
