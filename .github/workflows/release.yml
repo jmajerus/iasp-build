@@ -1,7 +1,11 @@
 name: Release
 
-# Publishes a GitHub Release with the wheel and sdist attached, so
-# manuscripts can pin an exact build by URL.
+# Publishes the wheel and sdist to PyPI and to a GitHub Release, so
+# manuscripts can install a compatible version with pip.
+#
+# PyPI upload uses trusted publishing (OIDC), so there is no token. It
+# needs a trusted publisher on PyPI for this repository, workflow file
+# release.yml and environment "pypi".
 #
 # Two ways to cut a release:
 #   * Actions → Release → Run workflow, choosing patch/minor/major. The
@@ -28,6 +32,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # PyPI trusted publishing
 
 concurrency:
   group: release
@@ -36,6 +41,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/iasp-build/
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -89,7 +97,20 @@ jobs:
         id: existing
         env:
           TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BEFORE: ${{ github.event.before }}
         run: |
+          # A push that edits pyproject.toml without changing the version
+          # (dependencies, metadata) is not a release.
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            previous=$(git show "$BEFORE:pyproject.toml" 2>/dev/null \
+              | python -c "import sys, tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])" 2>/dev/null || true)
+            if [ "$previous" = "$VERSION" ]; then
+              echo "Version $VERSION is unchanged; nothing to release."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -130,7 +151,16 @@ jobs:
           git commit -am "Release $VERSION"
           git push origin HEAD:main
 
-      - name: Publish release
+      # Before the GitHub Release: a rerun skips versions that already have
+      # one, so PyPI must not be left behind. skip-existing makes a rerun
+      # after a failed GitHub Release step safe.
+      - name: Publish to PyPI
+        if: steps.existing.outputs.skip != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+      - name: Publish GitHub Release
         if: steps.existing.outputs.skip != 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
