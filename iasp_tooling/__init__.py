@@ -28,7 +28,8 @@ def _git_suffix() -> str:
 
     An installed wheel has no .git next to it, so released builds report the
     plain version. A checkout (editable install or PYTHONPATH) reports the
-    commit, plus ".dirty" when it has uncommitted changes.
+    commit, plus ".dirty" when it has uncommitted changes or new files that
+    are not ignored.
     """
 
     checkout = _PACKAGE_DIR.parent
@@ -40,7 +41,7 @@ def _git_suffix() -> str:
             capture_output=True, text=True, check=True, timeout=5,
         ).stdout.strip()
         dirty = subprocess.run(
-            ["git", "-C", str(checkout), "status", "--porcelain", "--untracked-files=no"],
+            ["git", "-C", str(checkout), "status", "--porcelain"],
             capture_output=True, text=True, check=True, timeout=5,
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
