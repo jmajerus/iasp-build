@@ -23,11 +23,13 @@ See the [iasp-mcp tool reference](https://github.com/jmajerus/iasp-mcp/blob/main
 
 ## Install
 
-Install from this checkout into the virtual environment used by your manuscript:
+Each release on GitHub has a wheel attached. To make builds repeatable, pin a release in the manuscript's `requirements-build.txt`:
 
-```sh
-python3 -m pip install '/path/to/iasp-build'
+```text
+iasp-build[kdp] @ https://github.com/jmajerus/iasp-build/releases/download/v0.1.4/iasp_build-0.1.4-py3-none-any.whl
 ```
+
+Then install it into the virtual environment used by your manuscript with `python3 -m pip install -r requirements-build.txt`. To try unreleased changes, install from a checkout instead: `python3 -m pip install -e '/path/to/iasp-build'`.
 
 The `kdp` extra adds Pillow for cover generation. Install Pandoc separately. PDF builds require XeLaTeX and its LaTeX packages. The builder can also use EPUBCheck for EPUB validation and qpdf for PDF optimization.
 
@@ -59,3 +61,11 @@ to `docs/build/annexes/`.
 ## Tests
 
 To run the tests, install the `test` extra and run `python3 -m pytest`. The detached-manuscript integration test uses Pandoc.
+
+CI runs the tests on every pull request and on each push to `main`.
+
+## Releasing
+
+Releases are published by the [Release workflow](.github/workflows/release.yml). To cut one, go to **Actions → Release → Run workflow** and choose `patch`, `minor` or `major`. The workflow bumps the version in `pyproject.toml`, runs the tests, commits `Release X.Y.Z` to `main`, and publishes a GitHub Release tagged `vX.Y.Z` with the wheel and sdist attached. If you bump the version yourself in a pull request, merging it to `main` starts the same release.
+
+Manuscripts that pin a release can pick up new ones on their own. A scheduled workflow in the manuscript repository checks for a newer release and opens a pull request that updates the pin.
