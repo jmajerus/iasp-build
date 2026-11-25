@@ -183,6 +183,8 @@ All build commands are wrapped in `.vscode/tasks.json`:
 }
 ```
 
+A profile can also set `pdf_page` to choose the page for digital PDFs: `"letter"` (the default, 1 in margins), `"a4"`, or `"6x9"`. See [PDF Styling](PDF%20Styling.md#pdf-modes).
+
 ### Switching Profiles
 
 - **CLI**: `python3 build_book.py --profile annex-1 epub`

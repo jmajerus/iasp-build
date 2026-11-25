@@ -127,15 +127,25 @@ These can be combined on the same fenced Div.
 
 ## PDF Modes
 
-The build script supports multiple PDF modes:
+There are two kinds of PDF: digital, for reading on a computer, and print, for KDP.
 
-| Target | Mode | Description |
-|--------|------|-------------|
-| `pdf` / `pdf-screen` | screen | Single-sided margins, optimized links |
-| `pdf-print` | print | Mirrored margins, binding offset |
-| `pdf-debug` | debug | Layout sentinels and notes |
+| Target | Kind | Page |
+|--------|------|------|
+| `pdf`, `pdf-screen`, `draft-pdf`, `all`, `draft-all` | digital | The profile's `pdf_page`: US Letter with 1 in margins unless set |
+| `pdf-print` | print | KDP trim, 6.69 × 9.61 in, with the gutter sized for the page count |
+| `pdf-debug` | digital | Writes `build/debug.tex` instead of a PDF; `pdf-debug-print` for print |
 
-The mode is passed via `pdfmode` metadata and controls geometry, headers, and link styling in `pdf-header.tex`.
+`pdf` and `pdf-screen` are the same build. Both write `<output_basename>.pdf`. Digital PDFs use page-number footers, no head rule, and coloured links. Print PDFs put the folio in the header and keep the KDP gutter. The kind is passed to `pdf-header.tex` as `pdfmode` (`screen` or `print`).
+
+A profile in `build-profiles.json` chooses the digital page with `pdf_page`:
+
+| `pdf_page` | Page | Margins |
+|------------|------|---------|
+| `letter` (default) | 8.5 × 11 in | 1 in |
+| `a4` | 210 × 297 mm | 1 in |
+| `6x9` | 6 × 9 in, the trade paperback shape, for proofing against print | 1.1 in |
+
+A portrait page leaves some border on a landscape monitor when the whole page is shown. Fit-width view fills the screen.
 
 ---
 
